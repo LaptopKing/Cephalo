@@ -59,6 +59,8 @@ cd Cephalo
 ./install.sh     # On Linux / macOS
 ```
 
+> **Zero-Friction Agent Setup:** The installer automatically detects and provisions global agent harness policies (e.g. for **Google Antigravity** at `~/.gemini/config/rules/cephalo_second_brain.md`) so that your agents immediately recognize, query, and continuously learn from Cephalo across all sessions without any manual configuration.
+
 ---
 
 ## 4. Using Cephalo (Agent & Human CLI)
@@ -151,7 +153,7 @@ cephalo specialty delete "redis-caching" --confirm
 
 Cephalo works out-of-the-box with any modern AI agent harness:
 
-- **Google Antigravity:** Guided by [`AGENTS.md`](AGENTS.md).
+- **Google Antigravity:** Automated via global rules ([`integrations/antigravity/`](integrations/antigravity/)) and guided by [`AGENTS.md`](AGENTS.md).
 - **Anthropic Claude Code:** Configured via [`CLAUDE.md`](CLAUDE.md).
 - **OpenAI Codex / Cursor:** Operates via universal CLI flags and `--json` outputs.
 

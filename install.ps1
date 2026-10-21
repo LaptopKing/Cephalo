@@ -23,14 +23,14 @@ $TargetDir = if (Test-Path "brain.py") {
 
 # 2. Clone if not in repo
 if (-not (Test-Path (Join-Path $TargetDir "brain.py"))) {
-    Write-Host "[1/5] Cloning Cephalo repository..." -ForegroundColor Yellow
+    Write-Host "[1/6] Cloning Cephalo repository..." -ForegroundColor Yellow
     if (Get-Command git -ErrorAction SilentlyContinue) {
         git clone https://github.com/LaptopKing/Cephalo.git $TargetDir
     } else {
         Write-Error "Git is required to install Cephalo. Please install Git first."
     }
 } else {
-    Write-Host "[1/5] Using Cephalo at $TargetDir" -ForegroundColor Green
+    Write-Host "[1/6] Using Cephalo at $TargetDir" -ForegroundColor Green
 }
 
 # 3. Locate Python (Bypassing Windows Store 0-byte stub)
@@ -66,20 +66,20 @@ if (-not $PythonCmd) {
     Write-Error "Python 3.10+ is required. Please install Python from https://www.python.org/downloads/."
 }
 
-Write-Host "[2/5] Installing core dependencies..." -ForegroundColor Yellow
+Write-Host "[2/6] Installing core dependencies..." -ForegroundColor Yellow
 & $PythonCmd -m pip install --quiet --upgrade pip
 & $PythonCmd -m pip install --quiet -r (Join-Path $TargetDir "requirements.txt")
 
 # 4. Install Chromium browser for Playwright dynamic crawler
-Write-Host "[3/5] Setting up Chromium crawler engine..." -ForegroundColor Yellow
+Write-Host "[3/6] Setting up Chromium crawler engine..." -ForegroundColor Yellow
 & $PythonCmd -m playwright install chromium
 
 # 5. Add to User PATH & Antigravity bin if available
-Write-Host "[4/5] Configuring 'cephalo' CLI command..." -ForegroundColor Yellow
+Write-Host "[4/6] Configuring 'cephalo' CLI command..." -ForegroundColor Yellow
 $AgyBin = Join-Path $HOME ".gemini\antigravity\bin"
 if (Test-Path $AgyBin) {
     Copy-Item (Join-Path $TargetDir "cephalo.bat") (Join-Path $AgyBin "cephalo.bat") -Force
-    Write-Host "      Configured cephalo.bat into Antigravity bin." -ForegroundColor Gray
+    Write-Host "      Configured cephalo.bat into Antigravity bin ($AgyBin)." -ForegroundColor Gray
 }
 
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -89,8 +89,31 @@ if ($UserPath -notlike "*$TargetDir*") {
     Write-Host "      Added $TargetDir to User PATH." -ForegroundColor Gray
 }
 
-# 6. Verify Installation
-Write-Host "[5/5] Initializing Cephalo..." -ForegroundColor Yellow
+# 6. Automatic Agent Harness Integration (Google Antigravity & Claude Code)
+Write-Host "[5/6] Configuring Agent Harness integrations..." -ForegroundColor Yellow
+
+# A. Google Antigravity Global Rule
+$AgyBase = Join-Path $HOME ".gemini"
+if (Test-Path $AgyBase) {
+    $AgyRulesDir = Join-Path $AgyBase "config\rules"
+    if (-not (Test-Path $AgyRulesDir)) {
+        New-Item -ItemType Directory -Path $AgyRulesDir -Force | Out-Null
+    }
+
+    $TemplatePath = Join-Path $TargetDir "integrations\antigravity\cephalo_second_brain.md"
+    if (Test-Path $TemplatePath) {
+        $RuleContent = (Get-Content -Path $TemplatePath -Raw -Encoding UTF8) -replace '\{\{CEPHALO_DIR\}\}', $TargetDir
+    } else {
+        $RuleContent = "# Cephalo Second Brain & Autonomous Memory Policy`n`nLocated at: $TargetDir`n`nAlways consult $TargetDir\USER_PROFILE.md and use 'cephalo search <query>' before answering."
+    }
+
+    $AgyRuleTarget = Join-Path $AgyRulesDir "cephalo_second_brain.md"
+    Set-Content -Path $AgyRuleTarget -Value $RuleContent -Encoding UTF8
+    Write-Host "      Configured Antigravity global rule at: $AgyRuleTarget" -ForegroundColor Green
+}
+
+# 7. Verify Installation & Database Health
+Write-Host "[6/6] Initializing Cephalo..." -ForegroundColor Yellow
 & $PythonCmd (Join-Path $TargetDir "brain.py") status
 
 Write-Host ""
