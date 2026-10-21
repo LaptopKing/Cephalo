@@ -33,12 +33,36 @@ if (-not (Test-Path (Join-Path $TargetDir "brain.py"))) {
     Write-Host "[1/5] Using Cephalo at $TargetDir" -ForegroundColor Green
 }
 
-# 3. Locate Python
-$PythonCmd = if (Get-Command python -ErrorAction SilentlyContinue) {
-    "python"
-} elseif (Get-Command py -ErrorAction SilentlyContinue) {
-    "py"
-} else {
+# 3. Locate Python (Bypassing Windows Store 0-byte stub)
+$KnownPythons = @(
+    "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
+    "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe",
+    "$env:ProgramFiles\Python\Python312\python.exe",
+    "$env:ProgramFiles\Python\Python311\python.exe"
+)
+
+$PythonCmd = $null
+foreach ($p in $KnownPythons) {
+    if (Test-Path $p) {
+        $PythonCmd = $p
+        break
+    }
+}
+
+if (-not $PythonCmd) {
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        $PythonCmd = "py"
+    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+        $testVer = & python --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $PythonCmd = "python"
+        }
+    }
+}
+
+if (-not $PythonCmd) {
     Write-Error "Python 3.10+ is required. Please install Python from https://www.python.org/downloads/."
 }
 
@@ -50,8 +74,14 @@ Write-Host "[2/5] Installing core dependencies..." -ForegroundColor Yellow
 Write-Host "[3/5] Setting up Chromium crawler engine..." -ForegroundColor Yellow
 & $PythonCmd -m playwright install chromium
 
-# 5. Add to User PATH
+# 5. Add to User PATH & Antigravity bin if available
 Write-Host "[4/5] Configuring 'cephalo' CLI command..." -ForegroundColor Yellow
+$AgyBin = Join-Path $HOME ".gemini\antigravity\bin"
+if (Test-Path $AgyBin) {
+    Copy-Item (Join-Path $TargetDir "cephalo.bat") (Join-Path $AgyBin "cephalo.bat") -Force
+    Write-Host "      Configured cephalo.bat into Antigravity bin." -ForegroundColor Gray
+}
+
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($UserPath -notlike "*$TargetDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$UserPath;$TargetDir", "User")
