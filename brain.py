@@ -19,6 +19,16 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Force UTF-8 on Windows terminal
+if sys.platform == "win32":
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Base Paths
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -379,11 +389,17 @@ def cmd_web(args) -> None:
 
 
 def cmd_fetch(args) -> None:
-    """Fetches clean text from a URL and optionally records it."""
+    """Fetches clean text from a URL (static or dynamic Chromium) and optionally records it."""
     from web_search import WebSearchEngine
     engine = WebSearchEngine()
     try:
-        page_text = engine.fetch_url(args.url, max_chars=args.max_chars)
+        page_text = engine.fetch_url(
+            args.url,
+            max_chars=args.max_chars,
+            dynamic=getattr(args, "dynamic", False),
+            headless=not getattr(args, "headed", False),
+            persistent=getattr(args, "persistent", False),
+        )
     except Exception as e:
         if args.json:
             print(json.dumps({"error": str(e)}, indent=2))
@@ -505,9 +521,12 @@ def main():
     web_p.add_argument("--category", type=str, default="web_research", help="Category for recorded memory.")
 
     # Web Fetch
-    fetch_p = subparsers.add_parser("fetch", parents=[shared_parser], help="Extract clean readable text from a URL and optionally record it.")
+    fetch_p = subparsers.add_parser("fetch", parents=[shared_parser], help="Extract clean readable text from a URL (supports static and dynamic Chromium) and optionally record it.")
     fetch_p.add_argument("url", type=str, help="Target webpage URL.")
-    fetch_p.add_argument("--max-chars", type=int, default=15000, help="Maximum characters to extract.")
+    fetch_p.add_argument("--dynamic", action="store_true", help="Render JavaScript dynamic SPAs using Playwright Chromium.")
+    fetch_p.add_argument("--headed", action="store_true", help="Launch visible Chromium browser window instead of headless.")
+    fetch_p.add_argument("--persistent", action="store_true", help="Use persistent browser profile in data/chromium_profile (preserves cookies/sessions).")
+    fetch_p.add_argument("--max-chars", type=int, default=25000, help="Maximum characters to extract.")
     fetch_p.add_argument("--record", action="store_true", help="Automatically sanitize and index content into LanceDB.")
     fetch_p.add_argument("--category", type=str, default="web_research", help="Category for recorded memory.")
 

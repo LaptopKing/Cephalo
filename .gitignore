@@ -8,6 +8,7 @@ data/lancedb/**
 data/prompts.jsonl
 data/*.jsonl
 !data/prompts.sample.jsonl
+data/chromium_profile/
 
 # --- Personal User Profile Blueprint ---
 USER_PROFILE.md

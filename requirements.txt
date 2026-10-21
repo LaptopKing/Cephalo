@@ -1,14 +1,14 @@
 # ==============================================================================
-# Personal Second Brain - Core Dependencies
-# Python Target: Python 3.12.10 (Tested on Windows 10 x86_64)
+# Cephalo - Core Dependencies
+# Python Target: Python 3.10+ (Tested on Windows, macOS, Linux)
 # ==============================================================================
 
 # --- Vector Storage ---
-# Embedded columnar vector database for high-performance local search
+# Embedded columnar vector database with native hybrid search (Dense + BM25)
 lancedb==0.40.0
 pyarrow==26.0.0
 
-# --- Mode A: Local / Zero-Leak Embeddings (FastEmbed) ---
+# --- Local Zero-Leak Embeddings (FastEmbed ONNX) ---
 # Ultra-lightweight ONNX-powered embedding engine (no heavy PyTorch needed)
 fastembed==0.9.0
 onnxruntime-gpu==1.31.0
@@ -16,28 +16,20 @@ numpy==2.4.6
 tokenizers==0.23.3
 huggingface-hub==1.33.0
 
-# --- Mode B: Google Cloud Embeddings (text-embedding-004) ---
-# Supports native Matryoshka dimension truncation (e.g. 768 -> 256)
-google-genai==2.31.0
-google-auth==2.62.0
-requests==2.34.2
+# --- Dynamic Web Crawler & Chromium Browser Engine ---
+# Playwright-powered headless or persistent browser for JavaScript SPAs & web research
+playwright>=1.40.0
 
-# --- Automated Sanitization Layer (Presidio & Regex) ---
+# --- Automated Privacy & Sanitization Layer ---
 # Detects and redacts PII before embedding or storage
 presidio-analyzer==2.2.364
 presidio-anonymizer==2.2.364
 spacy==3.8.16
 phonenumbers==9.0.41
 
-# --- Configuration & Validation ---
+# --- Optional Cloud Connectors & Utilities ---
+google-genai==2.31.0
+google-auth==2.62.0
+requests==2.34.2
 pydantic==2.14.1
 python-dotenv==1.2.4
-
-# ------------------------------------------------------------------------------
-# Notes on SpaCy Language Model for Presidio:
-# Presidio uses SpaCy for entity recognition (e.g., PERSON, LOCATION).
-# The en_core_web_lg model can be installed via:
-#   python -m spacy download en_core_web_lg
-# If the SpaCy model is not downloaded, the pipeline gracefully falls back
-# to deterministic regex filtering for API keys, secrets, tokens, emails, IPs.
-# ------------------------------------------------------------------------------

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Cephalo - Web Search & Web Ingestion Engine (web_search.py)
-===========================================================
-Provides zero-key web search and clean webpage content extraction.
+Cephalo - Web Search & Chromium Playwright Dynamic Crawler (web_search.py)
+==========================================================================
+Provides multi-engine web search and clean webpage content extraction.
 Features:
-- Free DuckDuckGo HTML fallback (zero external API keys required).
-- Optional API provider support (Tavily, Exa, Brave) via .env.
-- Webpage content scraper with HTML sanitization.
-- Automatic integration with Cephalo's local sanitizer & LanceDB vector store.
+- Fast Static Extractor: Zero-key DuckDuckGo HTML & urllib (sub-second, lightweight).
+- Dynamic Chromium Crawler: Playwright-powered headless or persistent browser engine
+  capable of rendering JavaScript SPAs, handling dynamic DOMs, and preserving session cookies.
+- Optional API Engine: Tavily and Exa integrations via .env.
+- Automatic integration with Cephalo's local sanitizer & LanceDB memory store.
 """
 
 from __future__ import annotations
@@ -20,7 +21,11 @@ import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Base directory for persistent browser profile
+DEFAULT_PROFILE_DIR = Path(__file__).resolve().parent / "data" / "chromium_profile"
 
 
 @dataclass
@@ -65,12 +70,11 @@ class HTMLTextExtractor(HTMLParser):
 
     def get_text(self) -> str:
         raw = "".join(self.text_parts)
-        # Collapse multiple blank lines
         return re.sub(r'\n\s*\n+', '\n\n', raw).strip()
 
 
 class WebSearchEngine:
-    """Orchestrates web search and webpage content retrieval."""
+    """Orchestrates web search and static/dynamic Chromium webpage retrieval."""
 
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Cephalo/0.1.0"
 
@@ -79,7 +83,7 @@ class WebSearchEngine:
         self.exa_key = exa_api_key or os.getenv("EXA_API_KEY")
 
     def search(self, query: str, max_results: int = 5) -> List[SearchResult]:
-        """Searches the web using API provider if configured, else DuckDuckGo HTML fallback."""
+        """Searches the web using API provider if configured, else DuckDuckGo fallback."""
         query = query.strip()
         if not query:
             return []
@@ -95,7 +99,6 @@ class WebSearchEngine:
         try:
             return self._search_duckduckgo_html(query, max_results)
         except Exception as e:
-            # Fallback to empty if network issue
             return [SearchResult(title="Search Error", url="", snippet=f"Failed to fetch results: {e}")]
 
     def _search_duckduckgo_html(self, query: str, max_results: int) -> List[SearchResult]:
@@ -116,15 +119,10 @@ class WebSearchEngine:
             html_content = response.read().decode("utf-8", errors="ignore")
 
         results: List[SearchResult] = []
-        # Pattern to extract results from html.duckduckgo.com
-        # Matches result blocks
         blocks = re.findall(r'<div class="result results_links[^"]*">(.*?)</div>\s*</div>', html_content, re.DOTALL)
         if not blocks:
-            # Alternative fallback pattern for simple links
             blocks = re.findall(r'<a class="result__snippet[^"]*".*?</a>', html_content, re.DOTALL)
 
-        # Regex for link and snippet
-        link_pattern = re.compile(r'<a[^>]+class="result__url"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.DOTALL)
         title_pattern = re.compile(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.DOTALL)
         snippet_pattern = re.compile(r'<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', re.DOTALL)
 
@@ -137,7 +135,6 @@ class WebSearchEngine:
 
             if title_m:
                 raw_url = title_m.group(1)
-                # DuckDuckGo redirect url unwrap: /l/?uddg=https%3A%2F%2F...
                 if "uddg=" in raw_url:
                     parsed_qs = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
                     clean_url = parsed_qs.get("uddg", [raw_url])[0]
@@ -180,27 +177,126 @@ class WebSearchEngine:
             )
         return results
 
-    def fetch_url(self, target_url: str, max_chars: int = 15000) -> str:
-        """Fetches a URL and returns clean readable markdown/text content."""
-        req = urllib.request.Request(target_url, headers={"User-Agent": self.USER_AGENT})
-        with urllib.request.urlopen(req, timeout=12) as resp:
-            content_type = resp.headers.get("Content-Type", "")
-            if "text/html" not in content_type and "text/plain" not in content_type:
-                return f"[Unsupported Content-Type: {content_type}]"
-            html_text = resp.read().decode("utf-8", errors="ignore")
+    def fetch_url(
+        self,
+        target_url: str,
+        max_chars: int = 15000,
+        dynamic: bool = False,
+        headless: bool = True,
+        persistent: bool = False,
+    ) -> str:
+        """
+        Fetches a URL and returns clean readable markdown/text content.
+        If dynamic=True, uses Playwright Chromium to execute JavaScript and render dynamic SPAs.
+        """
+        if dynamic:
+            return self.fetch_dynamic(
+                target_url=target_url,
+                max_chars=max_chars,
+                headless=headless,
+                persistent=persistent,
+            )
 
-        parser = HTMLTextExtractor()
-        parser.feed(html_text)
-        text = parser.get_text()
-        if len(text) > max_chars:
-            text = text[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
-        return text
+        # Fast static fetch
+        try:
+            req = urllib.request.Request(target_url, headers={"User-Agent": self.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                if "text/html" not in content_type and "text/plain" not in content_type:
+                    return f"[Unsupported Content-Type: {content_type}]"
+                html_text = resp.read().decode("utf-8", errors="ignore")
+
+            parser = HTMLTextExtractor()
+            parser.feed(html_text)
+            text = parser.get_text()
+
+            # If page is essentially empty or an SPA shell, hint at dynamic crawling
+            if len(text.strip()) < 100:
+                text += "\n\n[Notice: Page returned minimal text. Use --dynamic flag to render with Chromium]"
+
+            if len(text) > max_chars:
+                text = text[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
+            return text
+
+        except Exception as e:
+            # If static fetch fails with 403 or blocks, try dynamic fallback
+            return f"[Static Fetch Error: {e}. Try --dynamic to render via Chromium]"
+
+    def fetch_dynamic(
+        self,
+        target_url: str,
+        max_chars: int = 25000,
+        headless: bool = True,
+        persistent: bool = False,
+        wait_seconds: float = 3.0,
+    ) -> str:
+        """
+        Launches Playwright Chromium to fetch and render JavaScript-heavy dynamic web pages.
+        Supports persistent browser profiles for residential cookies and session storage.
+        """
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            return "[Error: Playwright is not installed. Run 'pip install playwright && playwright install chromium']"
+
+        with sync_playwright() as p:
+            if persistent:
+                DEFAULT_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+                context = p.chromium.launch_persistent_context(
+                    user_data_dir=str(DEFAULT_PROFILE_DIR),
+                    headless=headless,
+                    user_agent=self.USER_AGENT,
+                    viewport={"width": 1280, "height": 800},
+                    args=["--disable-blink-features=AutomationControlled"],
+                )
+                page = context.new_page() if not context.pages else context.pages[0]
+            else:
+                browser = p.chromium.launch(
+                    headless=headless,
+                    args=["--disable-blink-features=AutomationControlled"],
+                )
+                context = browser.new_context(
+                    user_agent=self.USER_AGENT,
+                    viewport={"width": 1280, "height": 800},
+                )
+                page = context.new_page()
+
+            try:
+                # Remove webdriver flag
+                page.add_init_script("delete Object.getPrototypeOf(navigator).webdriver")
+                
+                # Navigate
+                page.goto(target_url, wait_until="domcontentloaded", timeout=25000)
+                if wait_seconds > 0:
+                    page.wait_for_timeout(int(wait_seconds * 1000))
+
+                # Extract rendered text from the live DOM
+                raw_text = page.evaluate("""() => {
+                    const scripts = document.querySelectorAll('script, style, noscript, svg, iframe');
+                    scripts.forEach(s => s.remove());
+                    return document.body ? document.body.innerText : document.documentElement.innerText;
+                }""")
+
+                cleaned = re.sub(r'\n\s*\n+', '\n\n', raw_text).strip()
+                if len(cleaned) > max_chars:
+                    cleaned = cleaned[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
+                return cleaned
+
+            finally:
+                context.close()
+                if not persistent:
+                    browser.close()
 
 
 if __name__ == "__main__":
     import sys
     engine = WebSearchEngine()
-    q = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Python LanceDB vector database"
-    print(f"Searching: '{q}'\n" + "-" * 50)
-    for r in engine.search(q, max_results=3):
-        print(f"• {r.title}\n  {r.url}\n  {r.snippet}\n")
+    if len(sys.argv) > 1 and sys.argv[1].startswith("http"):
+        print(f"Fetching URL dynamically: {sys.argv[1]}")
+        content = engine.fetch_url(sys.argv[1], dynamic=True)
+        print(content[:1000])
+    else:
+        q = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Cephalo AI memory"
+        print(f"Searching: '{q}'\n" + "-" * 50)
+        for r in engine.search(q, max_results=3):
+            print(f"• {r.title}\n  {r.url}\n  {r.snippet}\n")
