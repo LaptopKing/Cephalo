@@ -27,6 +27,16 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# Force UTF-8 on Windows terminal/pipes
+if sys.platform == "win32":
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Base Paths
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "data"
@@ -218,6 +228,34 @@ def query_relevant_memory(query_text: str) -> Optional[Tuple[str, str, float]]:
     return None
 
 
+def handle_session_start(input_data: Dict[str, Any]) -> None:
+    """
+    SessionStart Hook Handler:
+    Injects Cephalo orientation into the agent's persistent conversation trajectory.
+    """
+    profile_summary = ""
+    if PROFILE_FILE.exists():
+        profile_summary = " User profile active with cinema preferences (TCL 65T8B TV), hardware specs, and project specialties."
+
+    welcome_text = (
+        "🧠 Cephalo Second Brain is active and mounted at "
+        r"C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain."
+        + profile_summary +
+        " Ground decisions in USER_PROFILE.md and use `cephalo search` / `cephalo specialty` commands."
+    )
+
+    response = {
+        "injectSteps": [
+            {
+                "systemMessage": {
+                    "systemMessage": welcome_text
+                }
+            }
+        ]
+    }
+    print(json.dumps(response, ensure_ascii=False))
+
+
 def handle_pre_invocation(input_data: Dict[str, Any]) -> None:
     """
     PreInvocation Hook Handler:
@@ -335,6 +373,7 @@ def run_standalone_scan(transcript_path: Optional[str] = None) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Cephalo Harvester & Context Injector")
     parser.add_argument("--hook", action="store_true", help="Auto-detect hook payload on stdin")
+    parser.add_argument("--session-start", action="store_true", help="Run in SessionStart hook mode")
     parser.add_argument("--pre-invocation", action="store_true", help="Run in PreInvocation hook mode")
     parser.add_argument("--stop-hook", action="store_true", help="Run in Stop hook mode")
     parser.add_argument("--scan", action="store_true", help="Scan and audit all past transcripts")
@@ -342,7 +381,7 @@ def main():
     args = parser.parse_args()
 
     # Read stdin if in a hook mode
-    if args.hook or args.pre-invocation or args.stop_hook or (not sys.stdin.isatty() and not args.scan and not args.transcript):
+    if args.hook or args.session_start or args.pre_invocation or args.stop_hook or (not sys.stdin.isatty() and not args.scan and not args.transcript):
         input_data = {}
         try:
             raw = sys.stdin.read()
@@ -351,8 +390,9 @@ def main():
         except Exception:
             pass
 
-        # If explicitly pre-invocation or payload has invocationNum
-        if args.pre_invocation or "invocationNum" in input_data:
+        if args.session_start:
+            handle_session_start(input_data)
+        elif args.pre_invocation or "invocationNum" in input_data:
             handle_pre_invocation(input_data)
         else:
             handle_stop_hook(input_data)

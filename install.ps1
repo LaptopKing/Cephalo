@@ -15,7 +15,11 @@ Write-Host "  >> Sovereign Local Memory & Cognitive Coprocessor <<" -ForegroundC
 Write-Host ""
 
 # 1. Determine Target Directory
-$TargetDir = if (Test-Path "brain.py") {
+$TargetDir = if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "brain.py"))) {
+    $PSScriptRoot
+} elseif (Test-Path (Join-Path $HOME ".gemini\antigravity\scratch\second-brain\brain.py")) {
+    Join-Path $HOME ".gemini\antigravity\scratch\second-brain"
+} elseif (Test-Path "brain.py") {
     (Get-Location).Path
 } else {
     Join-Path $HOME ".cephalo"
@@ -142,14 +146,34 @@ if ($UserPath -notlike "*$TargetDir*") {
 # 6. Automatic Multi-Harness Integrations (Antigravity, Claude Code, Cursor, Codex)
 Write-Host "[5/6] Configuring Multi-Harness Agent integrations..." -ForegroundColor Yellow
 
-# A. Google Antigravity Integration (Rules + Hooks)
+# A. Google Antigravity Integration (Plugin, Skills, Rules, Lifecycle Hooks)
 $AgyBase = Join-Path $HOME ".gemini"
 if (Test-Path $AgyBase) {
-    $AgyRulesDir = Join-Path $AgyBase "config\rules"
-    if (-not (Test-Path $AgyRulesDir)) {
-        New-Item -ItemType Directory -Path $AgyRulesDir -Force | Out-Null
+    # 1. Antigravity Plugin (~/.gemini/config/plugins/cephalo)
+    $PluginDir = Join-Path $AgyBase "config\plugins\cephalo"
+    $PluginRulesDir = Join-Path $PluginDir "rules"
+    $PluginSkillsDir = Join-Path $PluginDir "skills\cephalo"
+    New-Item -ItemType Directory -Path $PluginRulesDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $PluginSkillsDir -Force | Out-Null
+
+    # Plugin Manifest
+    $PluginManifest = @{
+        name = "cephalo"
+        description = "Cephalo Omnipresent Autonomous Second Brain and Personal Memory Engine"
+    } | ConvertTo-Json
+    Set-Content -Path (Join-Path $PluginDir "plugin.json") -Value $PluginManifest -Encoding UTF8
+
+    # Skill File into plugin & global skills
+    $SkillSource = Join-Path $TargetDir "integrations\antigravity\SKILL.md"
+    if (Test-Path $SkillSource) {
+        Copy-Item $SkillSource (Join-Path $PluginSkillsDir "SKILL.md") -Force
+        $GlobalSkillsDir = Join-Path $AgyBase "config\skills\cephalo"
+        New-Item -ItemType Directory -Path $GlobalSkillsDir -Force | Out-Null
+        Copy-Item $SkillSource (Join-Path $GlobalSkillsDir "SKILL.md") -Force
+        Write-Host "      Configured Antigravity Cephalo Skill in plugin & global skills." -ForegroundColor Green
     }
 
+    # Consolidated Rules into plugin
     $TemplatePath = Join-Path $TargetDir "integrations\antigravity\cephalo_second_brain.md"
     if (Test-Path $TemplatePath) {
         $RuleContent = (Get-Content -Path $TemplatePath -Raw -Encoding UTF8) -replace '\{\{CEPHALO_DIR\}\}', $TargetDir
@@ -157,36 +181,66 @@ if (Test-Path $AgyBase) {
         $RuleContent = "# Cephalo Second Brain & Autonomous Memory Policy`n`nLocated at: $TargetDir`n`nAlways consult $TargetDir\USER_PROFILE.md and use 'cephalo search <query>' before answering."
     }
 
-    $AgyRuleTarget = Join-Path $AgyRulesDir "cephalo_second_brain.md"
-    Set-Content -Path $AgyRuleTarget -Value $RuleContent -Encoding UTF8
-    Write-Host "      Configured Antigravity global rule: $AgyRuleTarget" -ForegroundColor Green
+    Set-Content -Path (Join-Path $PluginRulesDir "AGENTS.md") -Value $RuleContent -Encoding UTF8
+    Set-Content -Path (Join-Path $PluginRulesDir "GEMINI.md") -Value $RuleContent -Encoding UTF8
 
-    # Lifecycle Hooks configuration (PreInvocation & Stop)
-    $AgyHooksFile = Join-Path $AgyBase "config\hooks.json"
+    # Global Rules
+    $AgyRulesDir = Join-Path $AgyBase "config\rules"
+    New-Item -ItemType Directory -Path $AgyRulesDir -Force | Out-Null
+    Set-Content -Path (Join-Path $AgyRulesDir "cephalo_second_brain.md") -Value $RuleContent -Encoding UTF8
+    Write-Host "      Configured Antigravity global rules." -ForegroundColor Green
+
+    # Lifecycle Hooks configuration (SessionStart, PreInvocation, Stop)
     $AutoHarvestPath = Join-Path $TargetDir "auto_harvest.py"
     $HooksJson = @"
 {
   "cephalo-autonomous-brain": {
     "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "\"$PythonCmd\" \"$AutoHarvestPath\" --session-start",
+        "timeout": 15
+      }
+    ],
     "PreInvocation": [
       {
         "type": "command",
-        "command": "cmd /c py \"$AutoHarvestPath\" --pre-invocation",
+        "command": "\"$PythonCmd\" \"$AutoHarvestPath\" --pre-invocation",
         "timeout": 15
       }
     ],
     "Stop": [
       {
         "type": "command",
-        "command": "cmd /c py \"$AutoHarvestPath\" --stop-hook",
+        "command": "\"$PythonCmd\" \"$AutoHarvestPath\" --stop-hook",
         "timeout": 15
       }
     ]
   }
 }
 "@
-    Set-Content -Path $AgyHooksFile -Value $HooksJson -Encoding UTF8
-    Write-Host "      Configured Antigravity autonomous lifecycle hooks: $AgyHooksFile" -ForegroundColor Green
+    Set-Content -Path (Join-Path $PluginDir "hooks.json") -Value $HooksJson -Encoding UTF8
+    Set-Content -Path (Join-Path $AgyBase "config\hooks.json") -Value $HooksJson -Encoding UTF8
+    Write-Host "      Configured Antigravity autonomous lifecycle hooks (SessionStart, PreInvocation, Stop)." -ForegroundColor Green
+
+    # Register in config.json
+    $ConfigFile = Join-Path $AgyBase "config\config.json"
+    if (Test-Path $ConfigFile) {
+        try {
+            $ConfigObj = Get-Content -Path $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            if (-not $ConfigObj.plugins) {
+                $ConfigObj | Add-Member -NotePropertyName "plugins" -NotePropertyValue (New-Object PSObject)
+            }
+            if (-not $ConfigObj.plugins.cephalo) {
+                $ConfigObj.plugins | Add-Member -NotePropertyName "cephalo" -NotePropertyValue ([PSCustomObject]@{ enabled = $true })
+            } else {
+                $ConfigObj.plugins.cephalo.enabled = $true
+            }
+            $ConfigObj | ConvertTo-Json -Depth 5 | Set-Content -Path $ConfigFile -Encoding UTF8
+            Write-Host "      Registered and enabled Cephalo plugin in config.json." -ForegroundColor Green
+        } catch {}
+    }
 }
 
 # B. Claude Code Integration
@@ -197,12 +251,12 @@ if (Test-Path $ClaudeDir) {
     Write-Host "      Configured Claude Code global policy: $ClaudeRuleTarget" -ForegroundColor Green
 }
 
-# C. Universal Harness Specifications (AGENTS.md)
+# C. Universal Harness Specifications (AGENTS.md & GEMINI.md)
 $UniversalAgentsFile = Join-Path $HOME "AGENTS.md"
-if (-not (Test-Path $UniversalAgentsFile)) {
-    Copy-Item (Join-Path $TargetDir "AGENTS.md") $UniversalAgentsFile -Force
-    Write-Host "      Configured Universal AGENTS.md at: $UniversalAgentsFile" -ForegroundColor Green
-}
+Copy-Item (Join-Path $TargetDir "AGENTS.md") $UniversalAgentsFile -Force
+$UniversalGeminiFile = Join-Path $HOME "GEMINI.md"
+Copy-Item (Join-Path $TargetDir "AGENTS.md") $UniversalGeminiFile -Force
+Write-Host "      Configured Universal AGENTS.md and GEMINI.md in home directory." -ForegroundColor Green
 
 # 7. Verify Installation & Database Health
 Write-Host "[6/6] Initializing Cephalo..." -ForegroundColor Yellow

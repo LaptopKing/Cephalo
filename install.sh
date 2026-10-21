@@ -16,7 +16,12 @@ echo "  >> Sovereign Local Memory & Cognitive Coprocessor <<"
 echo ""
 
 # 1. Determine Target Directory
-if [ -f "brain.py" ]; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/brain.py" ]; then
+    TARGET_DIR="$SCRIPT_DIR"
+elif [ -f "$HOME/.gemini/antigravity/scratch/second-brain/brain.py" ]; then
+    TARGET_DIR="$HOME/.gemini/antigravity/scratch/second-brain"
+elif [ -f "brain.py" ]; then
     TARGET_DIR="$(pwd)"
 else
     TARGET_DIR="$HOME/.cephalo"
@@ -59,22 +64,43 @@ ln -sf "$TARGET_DIR/cephalo" "$BIN_DIR/cephalo"
 # 6. Automatic Multi-Harness Agent Integrations
 echo "[5/6] Configuring Multi-Harness Agent integrations..."
 
-# A. Google Antigravity Integration (Rules + Hooks)
+# A. Google Antigravity Integration (Plugin, Skills, Rules, Lifecycle Hooks)
 if [ -d "$HOME/.gemini" ]; then
-    AGY_RULES="$HOME/.gemini/config/rules"
-    mkdir -p "$AGY_RULES"
-    
-    if [ -f "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" ]; then
-        sed "s|{{CEPHALO_DIR}}|$TARGET_DIR|g" "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" > "$AGY_RULES/cephalo_second_brain.md"
-    fi
-    echo "      Configured Antigravity global rule: $AGY_RULES/cephalo_second_brain.md"
+    AGY_PLUGIN="$HOME/.gemini/config/plugins/cephalo"
+    mkdir -p "$AGY_PLUGIN/rules" "$AGY_PLUGIN/skills/cephalo" "$HOME/.gemini/config/skills/cephalo" "$HOME/.gemini/config/rules"
 
-    # Lifecycle Hooks configuration
-    AGY_CONFIG="$HOME/.gemini/config"
-    cat << EOF > "$AGY_CONFIG/hooks.json"
+    # Plugin Manifest
+    cat << EOF > "$AGY_PLUGIN/plugin.json"
+{
+  "name": "cephalo",
+  "description": "Cephalo Omnipresent Autonomous Second Brain and Personal Memory Engine"
+}
+EOF
+
+    # Skills & Rules
+    if [ -f "$TARGET_DIR/integrations/antigravity/SKILL.md" ]; then
+        cp "$TARGET_DIR/integrations/antigravity/SKILL.md" "$AGY_PLUGIN/skills/cephalo/SKILL.md"
+        cp "$TARGET_DIR/integrations/antigravity/SKILL.md" "$HOME/.gemini/config/skills/cephalo/SKILL.md"
+    fi
+
+    if [ -f "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" ]; then
+        sed "s|{{CEPHALO_DIR}}|$TARGET_DIR|g" "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" > "$AGY_PLUGIN/rules/AGENTS.md"
+        cp "$AGY_PLUGIN/rules/AGENTS.md" "$AGY_PLUGIN/rules/GEMINI.md"
+        cp "$AGY_PLUGIN/rules/AGENTS.md" "$HOME/.gemini/config/rules/cephalo_second_brain.md"
+    fi
+
+    # Lifecycle Hooks configuration (SessionStart, PreInvocation, Stop)
+    cat << EOF > "$AGY_PLUGIN/hooks.json"
 {
   "cephalo-autonomous-brain": {
     "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "$TARGET_DIR/auto_harvest.py --session-start",
+        "timeout": 15
+      }
+    ],
     "PreInvocation": [
       {
         "type": "command",
@@ -92,7 +118,8 @@ if [ -d "$HOME/.gemini" ]; then
   }
 }
 EOF
-    echo "      Configured Antigravity autonomous lifecycle hooks: $AGY_CONFIG/hooks.json"
+    cp "$AGY_PLUGIN/hooks.json" "$HOME/.gemini/config/hooks.json"
+    echo "      Configured Antigravity Cephalo Plugin, Skills, Rules & Lifecycle Hooks."
 fi
 
 # B. Claude Code Integration

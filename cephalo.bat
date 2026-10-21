@@ -1,36 +1,38 @@
 @echo off
 setlocal enabledelayedexpansion
-set "SCRIPT_DIR=%~dp0"
-pushd "%SCRIPT_DIR%"
+set "SECOND_BRAIN_DIR=C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain"
 
-:: 1. Check known local Python 3.12 / 3.11 / 3.10 installs first (bypassing Windows Store 0-byte stub)
+if not exist "%SECOND_BRAIN_DIR%\brain.py" (
+    echo Error: Cephalo brain.py not found at "%SECOND_BRAIN_DIR%\brain.py"
+    exit /b 1
+)
+
+pushd "%SECOND_BRAIN_DIR%"
+
 for %%V in (Python312 Python311 Python313 Python310) do (
     if exist "%LOCALAPPDATA%\Programs\Python\%%V\python.exe" (
-        "%LOCALAPPDATA%\Programs\Python\%%V\python.exe" "%SCRIPT_DIR%brain.py" %*
+        "%LOCALAPPDATA%\Programs\Python\%%V\python.exe" "%SECOND_BRAIN_DIR%\brain.py" %*
         popd
         goto :eof
     )
 )
 
-:: 2. Check Program Files
 for %%V in (Python312 Python311 Python313 Python310) do (
     if exist "%ProgramFiles%\Python\%%V\python.exe" (
-        "%ProgramFiles%\Python\%%V\python.exe" "%SCRIPT_DIR%brain.py" %*
+        "%ProgramFiles%\Python\%%V\python.exe" "%SECOND_BRAIN_DIR%\brain.py" %*
         popd
         goto :eof
     )
 )
 
-:: 3. Check py launcher
 where py >nul 2>nul
 if %errorlevel% equ 0 (
-    py "%SCRIPT_DIR%brain.py" %*
+    py "%SECOND_BRAIN_DIR%\brain.py" %*
     popd
     goto :eof
 )
 
-:: 4. Fallback to python on PATH
-python "%SCRIPT_DIR%brain.py" %*
+python "%SECOND_BRAIN_DIR%\brain.py" %*
 if %errorlevel% equ 0 (
     popd
     goto :eof
@@ -38,5 +40,4 @@ if %errorlevel% equ 0 (
 
 popd
 echo Error: Python 3.10+ was not found on your system.
-echo Please install Python from https://www.python.org/downloads/
 exit /b 1
