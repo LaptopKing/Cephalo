@@ -210,6 +210,12 @@ def cmd_sync(args) -> None:
     print(f"[+] Total table records: {pipeline.store.count()}")
 
 
+
+def cmd_harvest(args) -> None:
+    """Scans conversation transcripts and harvests preferences/critiques."""
+    from auto_harvest import run_standalone_harvest
+    run_standalone_harvest(transcript_path=args.transcript)
+
 def cmd_specialty(args) -> None:
     """Handles CRUD operations for the Specialties domain layer."""
     from specialties_manager import SpecialtiesManager
@@ -463,6 +469,10 @@ def main():
     sync_p = subparsers.add_parser("sync", parents=[shared_parser], help="Synchronize prompts.jsonl with LanceDB.")
     sync_p.add_argument("--file", type=str, default=str(PROMPTS_FILE), help="Source JSONL file.")
 
+    # Harvest
+    harv_p = subparsers.add_parser("harvest", parents=[shared_parser], help="Autonomously harvest preferences from transcripts.")
+    harv_p.add_argument("--transcript", type=str, default=None, help="Specific transcript file to scan.")
+
     # Specialty
     spec_p = subparsers.add_parser("specialty", parents=[shared_parser], help="Manage project specialties (create, read, edit, delete, list).")
     spec_sub = spec_p.add_subparsers(dest="specialty_action", help="Specialty action")
@@ -542,6 +552,8 @@ def main():
         cmd_record(args)
     elif args.command == "sync":
         cmd_sync(args)
+    elif args.command == "harvest":
+        cmd_harvest(args)
     elif args.command == "specialty":
         cmd_specialty(args)
     elif args.command == "email":
