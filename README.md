@@ -11,11 +11,17 @@
   [![Embeddings: FastEmbed](https://img.shields.io/badge/Embeddings-FastEmbed%20ONNX-orange.svg)](https://github.com/qdrant/fastembed)
   [![Browser: Chromium](https://img.shields.io/badge/Crawler-Playwright%20Chromium-red.svg)](https://playwright.dev)
   [![Privacy: Zero--Leak](https://img.shields.io/badge/Privacy-Zero--Leak%20Local-red.svg)](#3-zero-leak-privacy-shield)
+  [![Development: Purely AI-Written](https://img.shields.io/badge/Written%20by-Autonomous%20AI-blueviolet.svg)](#1-overview)
+  [![Status: Battle--Tested Daily](https://img.shields.io/badge/Status-Daily%20Personal%20Use-success.svg)](#1-overview)
 </div>
 
 ---
 
 ## 1. Overview
+
+> [!NOTE]
+> **Purely AI-Written & Battle-Tested Daily**  
+> Cephalo is completely written and architected by autonomous AI agents through rigorous, iterative pair programming. Far from an abstract demo or theoretical concept, it is deeply thought out, engineered against real-world hardware constraints, and **relied upon on a daily basis for personal productivity, cross-session memory, and life automation**.
 
 **Cephalo** is an open-source, local-first long-term memory system designed for modern AI agent harnesses (**Google Antigravity**, **Anthropic Claude Code**, **OpenAI Codex**, **Cursor**, etc.) and individual developers.
 
