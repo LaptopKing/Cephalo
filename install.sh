@@ -51,65 +51,60 @@ $PY_CMD -m playwright install chromium
 # 5. Link executable into user bin
 echo "[4/6] Configuring 'cephalo' CLI command..."
 chmod +x "$TARGET_DIR/cephalo"
+chmod +x "$TARGET_DIR/auto_harvest.py"
 BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
 ln -sf "$TARGET_DIR/cephalo" "$BIN_DIR/cephalo"
 
-# 6. Automatic Agent Harness Integration (Google Antigravity)
-echo "[5/6] Configuring Agent Harness integrations..."
+# 6. Automatic Multi-Harness Agent Integrations
+echo "[5/6] Configuring Multi-Harness Agent integrations..."
+
+# A. Google Antigravity Integration (Rules + Hooks)
 if [ -d "$HOME/.gemini" ]; then
     AGY_RULES="$HOME/.gemini/config/rules"
     mkdir -p "$AGY_RULES"
     
     if [ -f "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" ]; then
         sed "s|{{CEPHALO_DIR}}|$TARGET_DIR|g" "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" > "$AGY_RULES/cephalo_second_brain.md"
-    else
-        cat << EOF > "$AGY_RULES/cephalo_second_brain.md"
-# Cephalo Second Brain & Autonomous Memory Policy
-
-## Core Invariant: Omnipresent Second Brain
-The user has an omnipresent, local-first Second Brain called **Cephalo** located at:
-\`$TARGET_DIR\`
-
-Cephalo is the user's permanent long-term memory core across **ALL sessions (new and existing)**. The AI agent must never restart from scratch or repeatedly ask the user for information, preferences, hardware setups, or background that are already recorded in Cephalo.
-
----
-
-## 1. Grounding in User Profile & Verified Hardware
-Before answering questions concerning past decisions, preferences, device configurations, or domain-specific workflows:
-1. Always ground your reasoning in Cephalo:
-   - Consult the profile blueprint: \`$TARGET_DIR/USER_PROFILE.md\`
-   - Or run the hybrid vector search CLI: \`cephalo search "<query>" --json\`
-2. Follow the user's communication style and language preferences specified in \`USER_PROFILE.md\`.
-
----
-
-## 2. Automated Continuous Learning (Record)
-Whenever the user:
-- Expresses a new preference, desire, or interest
-- Introduces or configures a new device, tool, or hardware
-- Makes an architectural, coding, or technical decision
-- Shares a project idea or workflow rule
-
-The agent **must automatically persist it**:
-1. Record into Cephalo vector database:
-   \`cephalo record "<decision_or_preference>" --category "<category>" --source "agent"\`
-2. If it affects core user identity, hardware, or global principles, update:
-   \`$TARGET_DIR/USER_PROFILE.md\`
-
----
-
-## 3. Continuous GitHub Synchronization
-If Cephalo is version-controlled via Git, all modifications, feature additions, and documentation improvements made to the repository must be committed and pushed:
-\`\`\`bash
-cd "$TARGET_DIR"
-git add .
-git commit -m "<Clear, descriptive commit message>"
-git push
-\`\`\`
-EOF
     fi
-    echo "      Configured Antigravity global rule at: $AGY_RULES/cephalo_second_brain.md"
+    echo "      Configured Antigravity global rule: $AGY_RULES/cephalo_second_brain.md"
+
+    # Lifecycle Hooks configuration
+    AGY_CONFIG="$HOME/.gemini/config"
+    cat << EOF > "$AGY_CONFIG/hooks.json"
+{
+  "cephalo-autonomous-brain": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "$TARGET_DIR/auto_harvest.py --pre-invocation",
+        "timeout": 15
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "$TARGET_DIR/auto_harvest.py --stop-hook",
+        "timeout": 15
+      }
+    ]
+  }
+}
+EOF
+    echo "      Configured Antigravity autonomous lifecycle hooks: $AGY_CONFIG/hooks.json"
+fi
+
+# B. Claude Code Integration
+if [ -d "$HOME/.claude" ]; then
+    cp "$TARGET_DIR/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+    echo "      Configured Claude Code global policy: $HOME/.claude/CLAUDE.md"
+fi
+
+# C. Universal Agent Specification (AGENTS.md)
+if [ ! -f "$HOME/AGENTS.md" ]; then
+    cp "$TARGET_DIR/AGENTS.md" "$HOME/AGENTS.md"
+    echo "      Configured Universal AGENTS.md at: $HOME/AGENTS.md"
 fi
 
 # 7. Verify Installation
@@ -118,11 +113,17 @@ $PY_CMD "$TARGET_DIR/brain.py" status
 
 echo ""
 echo "=========================================================="
-echo "  [+] Cephalo Installed Successfully!"
+echo "  [+] Cephalo Installed & Configured Across Agent Harnesses!"
 echo "=========================================================="
+echo "Autonomous Features Active:"
+echo "  • All user prompts automatically audited and logged."
+echo "  • Token-efficient dynamic context injection (silent on new topics)."
+echo "  • Antigravity PreInvocation & Stop lifecycle hooks enabled."
+echo "  • Multi-harness support (Antigravity, Claude Code, Cursor, Codex)."
+echo ""
 echo "You can now run 'cephalo' from any terminal:"
 echo "  cephalo status           # Check memory & database health"
 echo "  cephalo search <query>   # Query Cephalo with hybrid search"
-echo "  cephalo web <query>      # Live web research"
+echo "  cephalo harvest          # Audit past conversation transcripts"
 echo "  cephalo record <text>    # Store a memory with zero-leak privacy"
 echo ""

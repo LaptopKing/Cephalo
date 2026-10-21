@@ -7,6 +7,7 @@ data/lancedb/
 data/lancedb/**
 data/prompts.jsonl
 data/*.jsonl
+data/*.json
 !data/prompts.sample.jsonl
 data/chromium_profile/
 

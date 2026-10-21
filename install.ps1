@@ -76,6 +76,56 @@ Write-Host "[3/6] Setting up Chromium crawler engine..." -ForegroundColor Yellow
 
 # 5. Add to User PATH & Antigravity bin if available
 Write-Host "[4/6] Configuring 'cephalo' CLI command..." -ForegroundColor Yellow
+
+# Generate deterministic cephalo.bat with bound target directory
+$BatContent = @"
+@echo off
+setlocal enabledelayedexpansion
+set "SECOND_BRAIN_DIR=$TargetDir"
+
+if not exist "%SECOND_BRAIN_DIR%\brain.py" (
+    echo Error: Cephalo brain.py not found at "%SECOND_BRAIN_DIR%\brain.py"
+    exit /b 1
+)
+
+pushd "%SECOND_BRAIN_DIR%"
+
+for %%V in (Python312 Python311 Python313 Python310) do (
+    if exist "%LOCALAPPDATA%\Programs\Python\%%V\python.exe" (
+        "%LOCALAPPDATA%\Programs\Python\%%V\python.exe" "%SECOND_BRAIN_DIR%\brain.py" %*
+        popd
+        goto :eof
+    )
+)
+
+for %%V in (Python312 Python311 Python313 Python310) do (
+    if exist "%ProgramFiles%\Python\%%V\python.exe" (
+        "%ProgramFiles%\Python\%%V\python.exe" "%SECOND_BRAIN_DIR%\brain.py" %*
+        popd
+        goto :eof
+    )
+)
+
+where py >nul 2>nul
+if %errorlevel% equ 0 (
+    py "%SECOND_BRAIN_DIR%\brain.py" %*
+    popd
+    goto :eof
+)
+
+python "%SECOND_BRAIN_DIR%\brain.py" %*
+if %errorlevel% equ 0 (
+    popd
+    goto :eof
+)
+
+popd
+echo Error: Python 3.10+ was not found on your system.
+exit /b 1
+"@
+
+Set-Content -Path (Join-Path $TargetDir "cephalo.bat") -Value $BatContent -Encoding ASCII
+
 $AgyBin = Join-Path $HOME ".gemini\antigravity\bin"
 if (Test-Path $AgyBin) {
     Copy-Item (Join-Path $TargetDir "cephalo.bat") (Join-Path $AgyBin "cephalo.bat") -Force
@@ -89,10 +139,10 @@ if ($UserPath -notlike "*$TargetDir*") {
     Write-Host "      Added $TargetDir to User PATH." -ForegroundColor Gray
 }
 
-# 6. Automatic Agent Harness Integration (Google Antigravity & Claude Code)
-Write-Host "[5/6] Configuring Agent Harness integrations..." -ForegroundColor Yellow
+# 6. Automatic Multi-Harness Integrations (Antigravity, Claude Code, Cursor, Codex)
+Write-Host "[5/6] Configuring Multi-Harness Agent integrations..." -ForegroundColor Yellow
 
-# A. Google Antigravity Global Rule
+# A. Google Antigravity Integration (Rules + Hooks)
 $AgyBase = Join-Path $HOME ".gemini"
 if (Test-Path $AgyBase) {
     $AgyRulesDir = Join-Path $AgyBase "config\rules"
@@ -109,7 +159,49 @@ if (Test-Path $AgyBase) {
 
     $AgyRuleTarget = Join-Path $AgyRulesDir "cephalo_second_brain.md"
     Set-Content -Path $AgyRuleTarget -Value $RuleContent -Encoding UTF8
-    Write-Host "      Configured Antigravity global rule at: $AgyRuleTarget" -ForegroundColor Green
+    Write-Host "      Configured Antigravity global rule: $AgyRuleTarget" -ForegroundColor Green
+
+    # Lifecycle Hooks configuration (PreInvocation & Stop)
+    $AgyHooksFile = Join-Path $AgyBase "config\hooks.json"
+    $AutoHarvestPath = Join-Path $TargetDir "auto_harvest.py"
+    $HooksJson = @"
+{
+  "cephalo-autonomous-brain": {
+    "enabled": true,
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "cmd /c py \"$AutoHarvestPath\" --pre-invocation",
+        "timeout": 15
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "cmd /c py \"$AutoHarvestPath\" --stop-hook",
+        "timeout": 15
+      }
+    ]
+  }
+}
+"@
+    Set-Content -Path $AgyHooksFile -Value $HooksJson -Encoding UTF8
+    Write-Host "      Configured Antigravity autonomous lifecycle hooks: $AgyHooksFile" -ForegroundColor Green
+}
+
+# B. Claude Code Integration
+$ClaudeDir = Join-Path $HOME ".claude"
+if (Test-Path $ClaudeDir) {
+    $ClaudeRuleTarget = Join-Path $ClaudeDir "CLAUDE.md"
+    Copy-Item (Join-Path $TargetDir "CLAUDE.md") $ClaudeRuleTarget -Force
+    Write-Host "      Configured Claude Code global policy: $ClaudeRuleTarget" -ForegroundColor Green
+}
+
+# C. Universal Harness Specifications (AGENTS.md)
+$UniversalAgentsFile = Join-Path $HOME "AGENTS.md"
+if (-not (Test-Path $UniversalAgentsFile)) {
+    Copy-Item (Join-Path $TargetDir "AGENTS.md") $UniversalAgentsFile -Force
+    Write-Host "      Configured Universal AGENTS.md at: $UniversalAgentsFile" -ForegroundColor Green
 }
 
 # 7. Verify Installation & Database Health
@@ -118,11 +210,17 @@ Write-Host "[6/6] Initializing Cephalo..." -ForegroundColor Yellow
 
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "  [+] Cephalo Installed Successfully!" -ForegroundColor Green
+Write-Host "  [+] Cephalo Installed & Configured Across Agent Harnesses!" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "You can now run 'cephalo' from any terminal window:" -ForegroundColor White
-Write-Host "  cephalo status           # Check memory & database health" -ForegroundColor Gray
+Write-Host "Autonomous Features Active:" -ForegroundColor White
+Write-Host "  • All user prompts automatically audited and logged." -ForegroundColor Gray
+Write-Host "  • Token-efficient dynamic context injection (silent on new topics)." -ForegroundColor Gray
+Write-Host "  • Antigravity PreInvocation & Stop lifecycle hooks enabled." -ForegroundColor Gray
+Write-Host "  • Multi-harness support (Antigravity, Claude Code, Cursor, Codex)." -ForegroundColor Gray
+Write-Host ""
+Write-Host "Manual CLI commands available anywhere:" -ForegroundColor White
+Write-Host "  cephalo status           # System & LanceDB health" -ForegroundColor Gray
 Write-Host "  cephalo search <query>   # Query Cephalo with hybrid search" -ForegroundColor Gray
-Write-Host "  cephalo web <query>      # Live web research" -ForegroundColor Gray
-Write-Host "  cephalo record <text>    # Store a memory with zero-leak privacy" -ForegroundColor Gray
+Write-Host "  cephalo harvest          # Audit past conversation transcripts" -ForegroundColor Gray
+Write-Host "  cephalo record <text>    # Explicitly store memory" -ForegroundColor Gray
 Write-Host ""
