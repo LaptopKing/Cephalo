@@ -7,6 +7,7 @@ Manages the domain expertise layer in the Second Brain hierarchy:
 
 Features:
 - On-demand CRUD: Create, Read, Edit, Delete.
+- Autonomous Specialty Creation & Discovery for unknown technologies/methodologies.
 - Mandatory User Confirmation on Deletion (safe-by-default).
 - Verified Knowledge & GitHub Repositories curation.
 - Automatic integration with LanceDB (indexed for hybrid search).
@@ -21,7 +22,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Base Paths
 BASE_DIR = Path(__file__).resolve().parent
@@ -38,28 +39,60 @@ def slugify(text: str) -> str:
 
 
 class SpecialtiesManager:
-    """Orchestrates CRUD operations, LanceDB syncing, and user preferences mapping."""
+    """Orchestrates CRUD operations, autonomous specialty synthesis, LanceDB syncing, and user preferences mapping."""
 
     def __init__(self, root_dir: Path = SPECIALTIES_DIR):
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
 
     def _find_specialty_dir(self, name: str, project: Optional[str] = None) -> Optional[Path]:
-        """Locates the directory of a specialty by name and optional project."""
-        name_slug = slugify(name)
+        """Locates the directory of a specialty by name, slug, ID, or alias and optional project."""
+        name_clean = name.strip()
+
+        # Check if project was specified inside the name: "project:name" or "project/name"
+        if ":" in name_clean:
+            p_part, n_part = name_clean.split(":", 1)
+            project = project or p_part
+            name_clean = n_part
+        elif "/" in name_clean:
+            p_part, n_part = name_clean.split("/", 1)
+            project = project or p_part
+            name_clean = n_part
+
+        # Check if name starts with "specialty-<project>-"
+        if name_clean.startswith("specialty-"):
+            parts = name_clean.split("-", 2)
+            if len(parts) >= 3:
+                project = project or parts[1]
+                name_clean = parts[2]
+            else:
+                name_clean = name_clean[len("specialty-"):]
+
+        name_slug = slugify(name_clean)
+        try:
+            from specialties_synthesizer import SpecialtySynthesizer
+            resolved_slug = SpecialtySynthesizer.resolve_slug(name_clean)
+        except Exception:
+            resolved_slug = name_slug
+
+        candidates_to_try = [name_slug]
+        if resolved_slug != name_slug:
+            candidates_to_try.append(resolved_slug)
+
         if project:
             proj_slug = slugify(project)
-            candidate = self.root_dir / proj_slug / name_slug
-            if candidate.exists() and candidate.is_dir():
-                return candidate
-            return None
+            for c_slug in candidates_to_try:
+                candidate = self.root_dir / proj_slug / c_slug
+                if candidate.exists() and candidate.is_dir():
+                    return candidate
 
         # Search across all project folders
         for proj_dir in self.root_dir.iterdir():
             if proj_dir.is_dir():
-                candidate = proj_dir / name_slug
-                if candidate.exists() and candidate.is_dir():
-                    return candidate
+                for c_slug in candidates_to_try:
+                    candidate = proj_dir / c_slug
+                    if candidate.exists() and candidate.is_dir():
+                        return candidate
         return None
 
     def list_specialties(self, project: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -120,14 +153,16 @@ class SpecialtiesManager:
         key_takeaways: Optional[List[str]] = None,
         user_preferences: Optional[List[str]] = None,
         tags: Optional[List[str]] = None,
+        slug: Optional[str] = None,
         sync_to_vector_db: bool = True,
     ) -> Dict[str, Any]:
         """Creates a new specialty under a project, persists files, and indexes in LanceDB."""
         from embedding_pipeline import Sanitizer
-        sanitizer = Sanitizer()
+        sanitizer = Sanitizer(enable_gliner=False)
 
         proj_slug = slugify(project)
-        name_slug = slugify(name)
+        name_clean = name.strip()
+        name_slug = slugify(slug) if slug else slugify(name_clean)
         s_dir = self.root_dir / proj_slug / name_slug
         s_dir.mkdir(parents=True, exist_ok=True)
 
@@ -219,6 +254,86 @@ class SpecialtiesManager:
             "knowledge_path": str(knowledge_path),
         }
 
+    def auto_create_specialty(
+        self,
+        topic: str,
+        project: str = "global",
+        user_preferences: Optional[List[str]] = None,
+        sync_to_vector_db: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Autonomously synthesizes and creates a specialty for a technology or methodology.
+        Uses verified curated knowledge if available, or generates a domain profile dynamically.
+        """
+        from specialties_synthesizer import SpecialtySynthesizer
+
+        # Check if already exists under project or global
+        existing = self.get_specialty(topic, project=project)
+        if not existing and project != "global":
+            existing = self.get_specialty(topic, project="global")
+        if existing:
+            return {
+                "created": False,
+                "already_exists": True,
+                "manifest": existing["manifest"],
+                "path": existing["path"],
+            }
+
+        synth = SpecialtySynthesizer.synthesize(
+            topic=topic,
+            project=project,
+            user_preferences=user_preferences,
+        )
+
+        created = self.create_specialty(
+            name=synth["name"],
+            project=synth["project"],
+            fundamentals=synth["fundamentals"],
+            github_repos=synth["github_repos"],
+            key_takeaways=synth["key_takeaways"],
+            user_preferences=synth["user_preferences"],
+            tags=synth["tags"],
+            slug=synth.get("slug"),
+            sync_to_vector_db=sync_to_vector_db,
+        )
+        created["created"] = True
+        return created
+
+    def auto_discover_and_create(
+        self,
+        text_or_items: Any,
+        project: str = "global",
+        sync_to_vector_db: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Extracts technology and methodology candidates and autonomously creates any missing specialties.
+        """
+        from specialties_synthesizer import SpecialtySynthesizer
+
+        if isinstance(text_or_items, str):
+            candidates = SpecialtySynthesizer.discover_technologies(text_or_items)
+            # If no regex match from discover_technologies, check comma/semicolon/newline separated list
+            if not candidates and any(sep in text_or_items for sep in [",", ";", "\n"]):
+                candidates = [c.strip() for c in re.split(r"[,;\n]+", text_or_items) if c.strip()]
+            elif not candidates and text_or_items.strip():
+                candidates = [text_or_items.strip()]
+        elif isinstance(text_or_items, (list, tuple, set)):
+            candidates = list(text_or_items)
+        else:
+            candidates = []
+
+        results = []
+        for cand in candidates:
+            if not cand:
+                continue
+            res = self.auto_create_specialty(
+                topic=cand,
+                project=project,
+                sync_to_vector_db=sync_to_vector_db,
+            )
+            results.append(res)
+        return results
+
     def edit_specialty(
         self,
         name: str,
@@ -254,7 +369,6 @@ class SpecialtiesManager:
             content = knowledge_file.read_text(encoding="utf-8") if knowledge_file.exists() else ""
             if fundamentals:
                 clean_fund = sanitizer.sanitize(fundamentals.strip())
-                # Replace fundamentals section if possible, otherwise append
                 if "## 1. Core Fundamentals & Verified Knowledge" in content:
                     parts = content.split("## 1. Core Fundamentals & Verified Knowledge")
                     next_sec = parts[1].split("\n## ", 1)

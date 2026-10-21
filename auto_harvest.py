@@ -62,6 +62,8 @@ PREFERENCE_SIGNALS = [
     (r"\b(first language|native language|hungarian|magyar|marketplace)\b", "language_locale"),
     # Entertainment / Media
     (r"\b(movie|film|series|watch|show|cinema|director|bullet train|gentlemen)\b", "entertainment_preferences"),
+    # Specialty trigger / Technology adoption
+    (r"\b(specialt(y|ies)|need specialties|build up our specialties|technolog(y|ies)|stack|architecture)\b", "specialty_domain_learning"),
 ]
 
 
@@ -172,6 +174,15 @@ def harvest_all_user_prompts(messages: List[Dict[str, Any]], conversation_id: st
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
             existing_contents.add(text)
             harvested_count += 1
+
+            # Autonomous Specialty creation for unknown technologies/methodologies
+            if "specialty_domain_learning" in detected_categories:
+                try:
+                    from specialties_manager import SpecialtiesManager
+                    sm = SpecialtiesManager()
+                    sm.auto_discover_and_create(text, project="global")
+                except Exception:
+                    pass
         except Exception:
             pass
 

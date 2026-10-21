@@ -311,6 +311,38 @@ def cmd_specialty(args) -> None:
             else:
                 print(f"Error: {pe}")
 
+    elif action in ("auto-create", "auto"):
+        prefs = [p.strip() for p in args.preferences.split(",")] if getattr(args, "preferences", None) else None
+        res = mgr.auto_create_specialty(topic=args.topic, project=args.project, user_preferences=prefs)
+        if args.json:
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+            return
+        if res.get("already_exists"):
+            print(f"[i] Specialty '{res['manifest'].get('name')}' already exists in project '{res['manifest'].get('project')}'.")
+            print(f"    Path: {res['path']}")
+        else:
+            print(f"[+] Autonomously Synthesized & Created Specialty: '{res['manifest'].get('name')}' under Project: '{res['manifest'].get('project')}'")
+            print(f"    Manifest:  {res['path']}\\manifest.json")
+            print(f"    Knowledge: {res['knowledge_path']}")
+
+    elif action in ("auto-discover", "discover"):
+        content = getattr(args, "text", None) or ""
+        if getattr(args, "file", None):
+            fpath = Path(args.file)
+            if fpath.exists():
+                content += "\n" + fpath.read_text(encoding="utf-8")
+        if not content.strip():
+            print("Error: Provide --text or --file to auto-discover technologies.")
+            return
+        results = mgr.auto_discover_and_create(text_or_items=content, project=args.project)
+        if args.json:
+            print(json.dumps(results, indent=2, ensure_ascii=False))
+            return
+        print(f"[+] Auto-Discovery Complete: Processed {len(results)} technologies.")
+        for r in results:
+            status = "Created" if r.get("created") else "Already Exists"
+            print(f"  • [{status}] {r['manifest'].get('name')} ({r['manifest'].get('slug')}) in '{r['manifest'].get('project')}'")
+
 
 def cmd_email(args) -> None:
     """Delegates to EmailClient."""
@@ -507,6 +539,18 @@ def main():
     spec_del_p.add_argument("name", type=str, help="Specialty name or slug.")
     spec_del_p.add_argument("--project", type=str, default=None, help="Project name.")
     spec_del_p.add_argument("--confirm", action="store_true", help="Explicit user confirmation token for deletion.")
+
+    # specialty auto-create
+    spec_auto_p = spec_sub.add_parser("auto-create", parents=[shared_parser], help="Autonomously synthesize and create a specialty.")
+    spec_auto_p.add_argument("topic", type=str, help="Technology, tool, or methodology to synthesize.")
+    spec_auto_p.add_argument("--project", type=str, default="global", help="Target project (default: global).")
+    spec_auto_p.add_argument("--preferences", type=str, default=None, help="Comma-separated user preference bindings.")
+
+    # specialty auto-discover
+    spec_disc_p = spec_sub.add_parser("auto-discover", parents=[shared_parser], help="Discover technologies from text/file and create missing specialties.")
+    spec_disc_p.add_argument("--text", type=str, default=None, help="Text to scan for technologies/methodologies.")
+    spec_disc_p.add_argument("--file", type=str, default=None, help="File path to scan.")
+    spec_disc_p.add_argument("--project", type=str, default="global", help="Target project (default: global).")
 
     # Email
     email_p = subparsers.add_parser("email", parents=[shared_parser], help="Outbound email operations (status, send).")

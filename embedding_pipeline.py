@@ -142,7 +142,7 @@ class Sanitizer:
         "IBAN_CODE",
     ]
 
-    def __init__(self, enable_gliner: bool = True):
+    def __init__(self, enable_gliner: bool = False):
         # 1. Presidio Setup
         self.presidio_available = False
         try:
@@ -607,8 +607,9 @@ class EmbeddingPipeline:
         embedder: BaseEmbedder,
         db_path: Path = DEFAULT_LANCEDB_DIR,
         table_name: Optional[str] = None,
+        sanitizer: Optional[Sanitizer] = None,
     ):
-        self.sanitizer = Sanitizer()
+        self.sanitizer = sanitizer or Sanitizer(enable_gliner=False)
         self.embedder = embedder
         self.db_path = Path(db_path)
 
