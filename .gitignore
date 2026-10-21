@@ -1,0 +1,93 @@
+# ==============================================================================
+# Cephalo - Zero-Leak Privacy & Build Gitignore
+# ==============================================================================
+
+# --- Personal Memory Data & LanceDB Vector Store (CRITICAL PRIVACY) ---
+data/lancedb/
+data/lancedb/**
+data/prompts.jsonl
+data/*.jsonl
+!data/prompts.sample.jsonl
+
+# --- Personal User Profile Blueprint ---
+USER_PROFILE.md
+!USER_PROFILE.template.md
+
+# --- User Specialties & Domain Blueprints (STRICT PRIVACY) ---
+# Individual user projects and domain notes stay strictly local on your machine
+specialties/*
+!specialties/README.md
+!specialties/.gitkeep
+
+# --- Secrets & Environment Variables ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+*.cert
+secrets/
+
+# --- Python Bytecode & Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# --- IDEs & Code Editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# --- OS Artifacts ---
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- Log Files & Testing Artifacts ---
+*.log
+logs/
+*.sqlite
+*.db
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Temporary & Scratch Files ---
+scratch/
+tmp/
+temp/
