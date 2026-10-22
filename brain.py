@@ -507,6 +507,60 @@ def cmd_learn(args) -> None:
         learner.watch(interval_seconds=getattr(args, "interval", 120))
 
 
+def cmd_mcp(args) -> None:
+    """Launches native Model Context Protocol (MCP) stdio server."""
+    from mcp_server import run_stdio_server
+    run_stdio_server()
+
+
+def cmd_daemon(args) -> None:
+    """Manages the always-on background daemon."""
+    from cephalo_daemon import (
+        CephaloDaemon,
+        get_daemon_status,
+        start_daemon_detached,
+        stop_daemon,
+        install_windows_task,
+        uninstall_windows_task,
+    )
+    action = getattr(args, "daemon_action", None) or "status"
+    interval = getattr(args, "interval", 90)
+
+    if action == "run":
+        daemon = CephaloDaemon(interval_seconds=interval)
+        daemon.run_foreground()
+    elif action == "start":
+        start_daemon_detached(interval=interval)
+    elif action == "stop":
+        stop_daemon()
+    elif action == "status":
+        info = get_daemon_status()
+        if args.json:
+            print(json.dumps(info, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 65)
+            print("  CEPHALO ALWAYS-ON DAEMON STATUS")
+            print("=" * 65)
+            print(f"Status:        {'RUNNING (Active)' if info['running'] else 'STOPPED'}")
+            if info["pid"]:
+                print(f"Process PID:   {info['pid']}")
+            detail = info.get("detail", {})
+            if detail:
+                print(f"Last Heartbeat: {detail.get('last_heartbeat', 'N/A')}")
+                print(f"Interval:       {detail.get('interval_seconds', 90)}s")
+                last_c = detail.get("last_cycle", {})
+                if "learning" in last_c:
+                    l = last_c["learning"]
+                    print(f"Last Learning:  {l.get('scanned_projects_count', 0)} projects, {len(l.get('discovered_technologies', []))} stacks")
+                if "git_pushed" in last_c:
+                    print(f"GitHub Sync:    {'Pushed' if last_c['git_pushed'] else 'Up to date'}")
+            print("=" * 65)
+    elif action == "install-task":
+        install_windows_task()
+    elif action == "uninstall-task":
+        uninstall_windows_task()
+
+
 def main():
     # Common parent parser so flags like --json and --table work before or after subcommands
     shared_parser = argparse.ArgumentParser(add_help=False)
@@ -642,6 +696,21 @@ def main():
     learn_watch_p = learn_sub.add_parser("watch", parents=[shared_parser], help="Run background continuous watcher.")
     learn_watch_p.add_argument("--interval", type=int, default=120, help="Interval between cycles in seconds (default: 120).")
 
+    # MCP (Model Context Protocol) Server
+    subparsers.add_parser("mcp", help="Launch native Model Context Protocol (MCP) server for Claude Code, Cursor, Windsurf, Zed, etc.")
+
+    # Daemon (Always-On Background Worker)
+    daemon_p = subparsers.add_parser("daemon", parents=[shared_parser], help="Manage always-on background continuous learning daemon.")
+    daemon_sub = daemon_p.add_subparsers(dest="daemon_action", help="Daemon action")
+    daemon_run_p = daemon_sub.add_parser("run", parents=[shared_parser], help="Run daemon in foreground.")
+    daemon_run_p.add_argument("--interval", type=int, default=90, help="Interval in seconds.")
+    daemon_start_p = daemon_sub.add_parser("start", parents=[shared_parser], help="Start daemon as detached background process.")
+    daemon_start_p.add_argument("--interval", type=int, default=90, help="Interval in seconds.")
+    daemon_sub.add_parser("stop", parents=[shared_parser], help="Stop running background daemon.")
+    daemon_sub.add_parser("status", parents=[shared_parser], help="Check daemon status and last cycle.")
+    daemon_sub.add_parser("install-task", parents=[shared_parser], help="Install Windows Scheduled Task (auto-start on logon).")
+    daemon_sub.add_parser("uninstall-task", parents=[shared_parser], help="Uninstall Windows Scheduled Task.")
+
     args = parser.parse_args()
 
     if not args.command or args.command == "status":
@@ -660,6 +729,10 @@ def main():
         cmd_specialty(args)
     elif args.command == "learn":
         cmd_learn(args)
+    elif args.command == "mcp":
+        cmd_mcp(args)
+    elif args.command == "daemon":
+        cmd_daemon(args)
     elif args.command == "email":
         cmd_email(args)
     elif args.command == "web":
