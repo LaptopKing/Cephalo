@@ -41,6 +41,8 @@ DAEMON_STATUS_FILE = DATA_DIR / "cephalo_daemon_status.json"
 DAEMON_LOG_FILE = DATA_DIR / "daemon.log"
 DEFAULT_INTERVAL_SECONDS = 90
 
+NO_WINDOW_FLAG = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
 # Ensure data directory exists
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -129,14 +131,15 @@ class CephaloDaemon:
                 capture_output=True,
                 text=True,
                 timeout=10,
+                creationflags=NO_WINDOW_FLAG,
             )
             git_changes = status_proc.stdout.strip()
             if git_changes:
                 logger.info("Detected local Cephalo changes. Synchronizing to GitHub...")
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "add", "."], capture_output=True, check=True, timeout=15)
+                subprocess.run(["git", "-C", str(SCRIPT_DIR), "add", "."], capture_output=True, check=True, timeout=15, creationflags=NO_WINDOW_FLAG)
                 commit_msg = f"chore(auto-sync): autonomous continuous learning cycle [{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}]"
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "commit", "-m", commit_msg], capture_output=True, check=True, timeout=15)
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "push", "origin", "main"], capture_output=True, check=True, timeout=25)
+                subprocess.run(["git", "-C", str(SCRIPT_DIR), "commit", "-m", commit_msg], capture_output=True, check=True, timeout=15, creationflags=NO_WINDOW_FLAG)
+                subprocess.run(["git", "-C", str(SCRIPT_DIR), "push", "origin", "main"], capture_output=True, check=True, timeout=25, creationflags=NO_WINDOW_FLAG)
                 logger.info("Successfully pushed updates to LaptopKing/Cephalo.")
                 cycle_result["git_pushed"] = True
             else:
@@ -193,7 +196,11 @@ def is_pid_running(pid: int) -> bool:
         return False
     if sys.platform == "win32":
         try:
-            out = subprocess.check_output(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV"], text=True)
+            out = subprocess.check_output(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV"],
+                text=True,
+                creationflags=NO_WINDOW_FLAG,
+            )
             return str(pid) in out
         except Exception:
             return False
@@ -312,7 +319,7 @@ def stop_daemon() -> bool:
     print(f"[*] Stopping Cephalo Daemon (PID {pid})...")
     try:
         if sys.platform == "win32":
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=True, capture_output=True)
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=True, capture_output=True, creationflags=NO_WINDOW_FLAG)
         else:
             os.kill(pid, signal.SIGTERM)
         if PID_FILE.exists():
@@ -346,7 +353,7 @@ def install_windows_task() -> bool:
     ]
 
     print(f"[*] Registering Windows Scheduled Task '{task_name}'...")
-    res = subprocess.run(create_cmd, capture_output=True, text=True)
+    res = subprocess.run(create_cmd, capture_output=True, text=True, creationflags=NO_WINDOW_FLAG)
     if res.returncode == 0:
         print(f"[+] Scheduled Task '{task_name}' installed! Cephalo will now run automatically on login.")
         return True
@@ -361,7 +368,7 @@ def uninstall_windows_task() -> bool:
         return False
     task_name = "CephaloContinuousDaemon"
     print(f"[*] Removing Windows Scheduled Task '{task_name}'...")
-    res = subprocess.run(["schtasks", "/Delete", "/TN", task_name, "/F"], capture_output=True, text=True)
+    res = subprocess.run(["schtasks", "/Delete", "/TN", task_name, "/F"], capture_output=True, text=True, creationflags=NO_WINDOW_FLAG)
     if res.returncode == 0:
         print(f"[+] Scheduled Task '{task_name}' removed.")
         return True
