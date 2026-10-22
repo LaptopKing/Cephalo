@@ -142,7 +142,7 @@ class CephaloDaemon:
             else:
                 cycle_result["git_pushed"] = False
         except Exception as e:
-            logger.debug(f"Git auto-sync skipped: {e}")
+            logger.warning(f"Git auto-sync skipped: {e}")
             cycle_result["git_error"] = str(e)
 
         self._update_status(cycle_result)
@@ -158,17 +158,26 @@ class CephaloDaemon:
             logger.info("Termination signal received. Stopping daemon...")
             self.running = False
 
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
+        try:
+            signal.signal(signal.SIGINT, handle_signal)
+            signal.signal(signal.SIGTERM, handle_signal)
+        except Exception:
+            pass
 
         try:
             while self.running:
-                self.execute_cycle()
+                try:
+                    self.execute_cycle()
+                except Exception as cycle_err:
+                    logger.error(f"Error in execution cycle: {cycle_err}", exc_info=True)
+
                 # Sleep in short increments for responsive interrupt handling
                 for _ in range(self.interval_seconds):
                     if not self.running:
                         break
                     time.sleep(1)
+        except Exception as loop_err:
+            logger.error(f"Daemon fatal loop crash: {loop_err}", exc_info=True)
         finally:
             self._remove_pid()
             logger.info("Cephalo Daemon stopped gracefully.")
@@ -228,13 +237,39 @@ def start_daemon_detached(interval: int = DEFAULT_INTERVAL_SECONDS) -> bool:
         return True
 
     python_bin = sys.executable
+    script_path = SCRIPT_DIR / "cephalo_daemon.py"
+
+    if sys.platform == "win32":
+        # Use PowerShell Start-Process to guarantee complete process independence
+        ps_cmd = (
+            f"Start-Process -FilePath '{python_bin}' "
+            f"-ArgumentList '\"{script_path}\" run --interval {interval}' "
+            f"-WindowStyle Hidden"
+        )
+        try:
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            time.sleep(1.5)
+            check = get_daemon_status()
+            active_pid = check.get("pid")
+            print(f"[+] Cephalo Always-On Daemon launched successfully in background (PID: {active_pid or 'Active'}).")
+            print(f"    Check status anytime via: cephalo daemon status")
+            return True
+        except Exception as e:
+            logger.warning(f"PowerShell Start-Process failed: {e}. Falling back to Popen...")
+
+    # Fallback to Popen
     creation_flags = 0
     if sys.platform == "win32":
-        creation_flags = 0x08000000 | 0x00000200  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
+        creation_flags = 0x08000000 | 0x00000200 | 0x00000008  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
 
     cmd = [
         python_bin,
-        str(SCRIPT_DIR / "cephalo_daemon.py"),
+        str(script_path),
         "run",
         "--interval",
         str(interval),
@@ -249,7 +284,6 @@ def start_daemon_detached(interval: int = DEFAULT_INTERVAL_SECONDS) -> bool:
             stderr=subprocess.DEVNULL,
             close_fds=True,
         )
-        # Give process a moment to initialize and write its PID file
         time.sleep(1)
         check = get_daemon_status()
         active_pid = check.get("pid") or proc.pid
