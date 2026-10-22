@@ -40,6 +40,7 @@ cephalo mcp
 - `cephalo_search`: Hybrid dense Qwen vector + BM25 keyword search.
 - `cephalo_record`: Sanitize, embed, and permanently store decisions/preferences.
 - `cephalo_get_profile`: Retrieve `USER_PROFILE.md`.
+- `cephalo_deep_research`: Autonomous deep research into topics/subtopics (fundamentals, standards, GitHub repos).
 - `cephalo_list_specialties`: Enumerate active domain engineering modules.
 - `cephalo_get_specialty`: Fetch verified fundamentals, key takeaways, and anti-slop rules.
 - `cephalo_auto_create_specialty`: Autonomously synthesize a specialty for any novel technology.
@@ -55,6 +56,12 @@ All operations can be executed via `cephalo` (or `python brain.py`):
 ```bash
 # Search memory:
 cephalo search "vector database" --json --limit 5
+
+# Deep research topic & GitHub projects:
+cephalo research "threejs-pbr-rendering" --create
+
+# Research and create specialty module:
+cephalo specialty research "temporal-workflows" --project "global"
 
 # Record decision:
 cephalo record "Using BullMQ with Redis for background queueing" --category "architecture"

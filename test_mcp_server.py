@@ -39,6 +39,7 @@ def test_mcp_protocol():
     assert "cephalo_record" in tool_names
     assert "cephalo_get_profile" in tool_names
     assert "cephalo_continuous_learn" in tool_names
+    assert "cephalo_deep_research" in tool_names
 
     # 3. Test tools/call cephalo_learning_status
     call_req = {

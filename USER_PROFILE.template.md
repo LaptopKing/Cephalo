@@ -53,3 +53,16 @@
 - **Storage Rule:** Never bypass `brain.py` when saving persistent insights.
 - **Memory Deduplication:** Re-index unindexed files via `python brain.py sync`.
 - **Search Rule:** Prefer `--json` output when feeding search results into automated agent context windows.
+
+
+---
+
+## 6. Knowledge Architecture: Specialties & Autonomous Research
+- **Structural Hierarchy:** `Project` -> `Specialties` (domain modules) -> `User Preferences` (personal constraints).
+- **Autonomous & On-Demand Research Invariant:** Cephalo triggers research and specialty creation **by default and on demand**.
+- **The Deep Research Methodology:**
+  - First principles & core execution mechanics.
+  - Industry standards & production best practices.
+  - Anti-AI-slop craftsmanship (Matt Pocock rules, Linux kernel conventions, max 3 indent levels, early returns, minimal indirection, explicit error handling, strict types, Rule of Three).
+  - Popular & battle-tested GitHub projects (stars, architecture references).
+  - UI/UX & accessibility standards (WCAG 2.1 AA, 4 states, mobile thumb zone, stone/pastel palette).

@@ -183,6 +183,39 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                 "properties": {},
             },
         },
+        {
+            "name": "cephalo_deep_research",
+            "description": "Executes autonomous deep research on any topic or subtopic using the user's methodology (first principles, industry standards, anti-AI-slop craftsmanship, top GitHub repos with stars). Optionally persists as a permanent specialty.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "Technology, domain, or methodology to research.",
+                    },
+                    "project": {
+                        "type": "string",
+                        "description": "Target project namespace (default: 'global').",
+                        "default": "global",
+                    },
+                    "subtopics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional specific subtopics to investigate.",
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional custom architectural directives.",
+                    },
+                    "create_specialty": {
+                        "type": "boolean",
+                        "description": "If true, registers and indexes the researched findings as a Cephalo specialty.",
+                        "default": True,
+                    },
+                },
+                "required": ["topic"],
+            },
+        },
     ]
 
 
@@ -273,6 +306,51 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             from continuous_learner import ContinuousLearner
             learner = ContinuousLearner()
             return {"status": "success", "state": learner.state}
+
+        elif name == "cephalo_deep_research":
+            from research_engine import DeepResearchEngine
+            engine = DeepResearchEngine()
+            topic = arguments.get("topic", "")
+            project = arguments.get("project", "global")
+            subtopics = arguments.get("subtopics")
+            notes = arguments.get("notes")
+            create = arguments.get("create_specialty", True)
+
+            synth = engine.synthesize_specialty(
+                topic=topic,
+                project=project,
+                subtopics=subtopics,
+                custom_notes=notes,
+            )
+
+            if create:
+                from specialties_manager import SpecialtiesManager
+                sm = SpecialtiesManager()
+                created = sm.create_specialty(
+                    name=synth["name"],
+                    project=synth["project"],
+                    fundamentals=synth["fundamentals"],
+                    github_repos=synth["github_repos"],
+                    key_takeaways=synth["key_takeaways"],
+                    user_preferences=synth["user_preferences"],
+                    tags=synth["tags"],
+                    slug=synth["slug"],
+                    sync_to_vector_db=True,
+                )
+                return {
+                    "status": "success",
+                    "action": "researched_and_created",
+                    "specialty_name": synth["name"],
+                    "path": created["path"],
+                    "repositories": synth["github_repos"],
+                    "takeaways": synth["key_takeaways"],
+                    "subtopics": synth["subtopics"],
+                }
+            return {
+                "status": "success",
+                "action": "researched",
+                "research": synth,
+            }
 
         else:
             return {"error": f"Unknown tool: '{name}'"}

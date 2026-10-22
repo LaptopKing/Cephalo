@@ -9,10 +9,11 @@ C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain
 - Tone: Direct, technical, pragmatic, clean markdown, no fluff.
 - Language: Hungarian (native primary) & English.
 
-## 2. Autonomous Learning Invariant
+## 2. Autonomous Learning & Deep Research Invariant
 - Whenever the user expresses a critique ("too slow", "boring", "drab", "didn't like"), capture it immediately as a negative blacklist constraint.
 - Whenever the user makes a technical or architectural decision, record it using `cephalo record "<decision>" --category "architecture"` or via MCP `cephalo_record`.
-- The user should NEVER have to manually remind you to save preferences.
+- Whenever a new technology, framework, or methodology arises, trigger deep research and specialty creation by default (`cephalo specialty research "<topic>"`).
+- The user should NEVER have to manually remind you to save preferences or research standards.
 
 ## 3. Anti-Slop Code Discipline (Matt Pocock + Linux Kernel)
 - Functions must fit on 1-2 screens; max 3 levels of indentation.

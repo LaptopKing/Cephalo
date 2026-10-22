@@ -25,6 +25,8 @@ This file informs **Claude Code** (and compatible agent harnesses) on how to ope
 | **Continuous Learning Status** | `cephalo learn status` |
 | **Always-On Background Daemon** | `cephalo daemon [start\|status\|stop]` |
 | **Launch MCP Server** | `cephalo mcp` |
+| **Deep Research Topic** | `cephalo research "<topic>" [--create]` |
+| **Research & Create Specialty** | `cephalo specialty research "<topic>"` |
 | **List Domain Specialties** | `cephalo specialty list` |
 | **Read Specialty Knowledge** | `cephalo specialty read <slug> --project <proj>` |
 | **Auto-Synthesize Specialty** | `cephalo specialty auto-create "<technology>"` |
@@ -33,8 +35,13 @@ This file informs **Claude Code** (and compatible agent harnesses) on how to ope
 
 ## 3. Core Autonomous Invariants
 
-1. **Autonomous Continuous Learning:** Cephalo's primary goal during development is to continuously and autonomously learn the user's coding style, workflow preferences, and personal tastes. If the user expresses a preference, hardware constraint, negative critique (*"too slow"*, *"too grey"*, *"not what we wanted"*), or makes an architectural decision, record it immediately via `cephalo record` or update `USER_PROFILE.md`. The user should NEVER have to say "did you save this?".
-2. **Automatic by Default (Zero-Manual-Trigger Invariant):** Any new feature added to Cephalo MUST work automatically without requiring manual commands or intervention, unless explicitly instructed or designed as an interactive CLI command.
+1. **Autonomous Continuous Learning & Research by Default:** Cephalo continuously learns and triggers research and specialty creation **by default and on demand**. When a new technology, framework, architecture, or subtopic is introduced in conversation, project manifests, or specs, Cephalo proactively investigates it using the user's standards (first principles, industry standards, anti-slop engineering, top GitHub projects with stars) and registers a specialty.
+2. **The User's Deep Research Methodology:**
+   - Matt Pocock "Skills for Real Engineers" (specs before tickets, tickets before code, vertical slices, structured grilling).
+   - Linux Kernel conventions (functions on 1-2 screens, max 3 indent levels, early returns, minimal indirection, explicit error handling, strict type boundaries, Rule of Three).
+   - Top GitHub projects: automated search and API verification of stars, descriptions, and reference patterns.
+   - UI/UX & Human-Centered heuristics (when applicable): WCAG 2.1 AA, 4 states (skeleton/error/empty/populated), 44px tap targets, bottom thumb zone, stone/pastel palette.
+3. **Automatic by Default (Zero-Manual-Trigger Invariant):** Any new feature added to Cephalo MUST work automatically without requiring manual commands or intervention, unless explicitly instructed or designed as an interactive CLI command.
 3. **English Language Invariant:** ALWAYS respond in English across all sessions. All projects, codebases, documentation, and user interfaces must be developed in English by default, unless explicitly requested otherwise.
 4. **Grounding in User Profile:** Ground your reasoning in [`USER_PROFILE.md`](USER_PROFILE.md):
    - Living room display: **TCL 65T8B** (65-inch 4K QLED Google TV).

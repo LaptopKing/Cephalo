@@ -343,6 +343,79 @@ def cmd_specialty(args) -> None:
             status = "Created" if r.get("created") else "Already Exists"
             print(f"  • [{status}] {r['manifest'].get('name')} ({r['manifest'].get('slug')}) in '{r['manifest'].get('project')}'")
 
+    elif action == "research":
+        res = mgr.research_and_create_specialty(
+            topic=args.topic,
+            project=args.project,
+            subtopics=getattr(args, "subtopics", None),
+            notes=getattr(args, "notes", None),
+            sync_to_vector_db=True,
+        )
+        if args.json:
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+            return
+        synth = res["synthesized"]
+        print("=" * 70)
+        print(f"[+] Researched & Created Specialty: '{synth['name']}' in Project: '{synth['project']}'")
+        print("=" * 70)
+        print(f"Manifest:   {res['path']}\\manifest.json")
+        print(f"Knowledge:  {res['knowledge_path']}")
+        print(f"Subtopics:  {', '.join(synth.get('subtopics', []))}")
+        print(f"Repositories ({len(synth.get('github_repos', []))}):")
+        for r in synth.get("github_repos", []):
+            print(f"  * {r['name']} (Stars: {r['stars']}): {r['description'][:80]}...")
+        print("=" * 70)
+
+
+def cmd_research(args) -> None:
+    """Executes deep research on a topic, finding best practices, industry standards, and top GitHub repos."""
+    from research_engine import DeepResearchEngine
+    engine = DeepResearchEngine()
+    synth = engine.synthesize_specialty(
+        topic=args.topic,
+        project=args.project,
+        subtopics=getattr(args, "subtopics", None),
+        custom_notes=getattr(args, "notes", None),
+    )
+
+    if getattr(args, "create", False):
+        from specialties_manager import SpecialtiesManager
+        sm = SpecialtiesManager()
+        created = sm.create_specialty(
+            name=synth["name"],
+            project=synth["project"],
+            fundamentals=synth["fundamentals"],
+            github_repos=synth["github_repos"],
+            key_takeaways=synth["key_takeaways"],
+            user_preferences=synth["user_preferences"],
+            tags=synth["tags"],
+            slug=synth["slug"],
+            sync_to_vector_db=True,
+        )
+        if args.json:
+            print(json.dumps({**synth, "created": True, "path": created["path"]}, indent=2, ensure_ascii=False))
+            return
+        print(f"[+] Researched and registered specialty '{synth['name']}' at {created['path']}")
+        return
+
+    if args.json:
+        print(json.dumps(synth, indent=2, ensure_ascii=False))
+        return
+
+    print("=" * 70)
+    print(f"  CEPHALO DEEP RESEARCH REPORT: {synth['name']}")
+    print("=" * 70)
+    print(f"Project:     {synth['project']}")
+    print(f"Slug:        {synth['slug']}")
+    print(f"Subtopics:   {', '.join(synth.get('subtopics', []))}")
+    print(f"Repositories ({len(synth.get('github_repos', []))}):")
+    for r in synth.get("github_repos", []):
+        print(f"  * {r['name']} (Stars: {r['stars']}): {r['description'][:80]}...")
+    print(f"Key Takeaways ({len(synth.get('key_takeaways', []))}):")
+    for t in synth.get("key_takeaways", [])[:5]:
+        print(f"  - {t}")
+    print("=" * 70)
+
 
 def cmd_email(args) -> None:
     """Delegates to EmailClient."""
@@ -679,6 +752,21 @@ def main():
     spec_disc_p.add_argument("--file", type=str, default=None, help="File path to scan.")
     spec_disc_p.add_argument("--project", type=str, default="global", help="Target project (default: global).")
 
+    # specialty research
+    spec_res_p = spec_sub.add_parser("research", parents=[shared_parser], help="Deep research topic, query GitHub repos, and synthesize specialty.")
+    spec_res_p.add_argument("topic", type=str, help="Technology or domain topic to research.")
+    spec_res_p.add_argument("--project", type=str, default="global", help="Target project (default: global).")
+    spec_res_p.add_argument("--subtopics", nargs="+", default=None, help="Specific subtopics to decompose.")
+    spec_res_p.add_argument("--notes", type=str, default=None, help="Custom notes or directives.")
+
+    # Deep Research
+    res_p = subparsers.add_parser("research", parents=[shared_parser], help="Conduct deep research, benchmark industry standards & GitHub repos, and optionally create specialty.")
+    res_p.add_argument("topic", type=str, help="Technology or domain topic to research.")
+    res_p.add_argument("--project", type=str, default="global", help="Target project (default: global).")
+    res_p.add_argument("--subtopics", nargs="+", default=None, help="Specific subtopics to decompose.")
+    res_p.add_argument("--notes", type=str, default=None, help="Custom notes or directives.")
+    res_p.add_argument("--create", action="store_true", help="Automatically create and persist as a specialty in Cephalo.")
+
     # Email
     email_p = subparsers.add_parser("email", parents=[shared_parser], help="Outbound email operations (status, send).")
     email_sub = email_p.add_subparsers(dest="email_action", help="Email action")
@@ -756,6 +844,8 @@ def main():
         cmd_harvest(args)
     elif args.command == "specialty":
         cmd_specialty(args)
+    elif args.command == "research":
+        cmd_research(args)
     elif args.command == "learn":
         cmd_learn(args)
     elif args.command == "mcp":

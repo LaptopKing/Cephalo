@@ -225,8 +225,9 @@ class ContinuousLearner:
     def audit_and_synthesize_specialties(
         self, scanned_projects: List[Dict[str, Any]]
     ) -> List[str]:
-        """Detects technologies without a specialty and synthesizes them."""
+        """Detects technologies and methodologies without a specialty and synthesizes them."""
         from specialties_manager import SpecialtiesManager
+        from specialties_synthesizer import SpecialtySynthesizer
 
         existing_slugs = self.get_existing_specialty_slugs()
         sm = SpecialtiesManager()
@@ -234,6 +235,24 @@ class ContinuousLearner:
         all_detected_tech: Set[str] = set()
         for p in scanned_projects:
             all_detected_tech.update(p.get("technologies", []))
+
+        # Also audit recent prompts for novel tech/methodology mentions
+        if PROMPTS_FILE.exists():
+            try:
+                with open(PROMPTS_FILE, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            pdata = json.loads(line)
+                            pcontent = pdata.get("content", "")
+                            tech_hits = SpecialtySynthesizer.discover_technologies(pcontent)
+                            all_detected_tech.update(tech_hits)
+                        except Exception:
+                            continue
+            except Exception:
+                pass
 
         synthesized = []
         for tech in sorted(all_detected_tech):
@@ -245,7 +264,7 @@ class ContinuousLearner:
             # Need to synthesize
             logger.info(f"Discovered novel stack without specialty: '{tech}'. Synthesizing...")
             try:
-                spec = sm.auto_create_specialty(tech, project="global", sync_to_vector_db=False)
+                spec = sm.auto_create_specialty(tech, project="global", sync_to_vector_db=True)
                 if spec:
                     manifest = spec.get("manifest", {})
                     slug = manifest.get("slug", tech)
@@ -287,6 +306,7 @@ class ContinuousLearner:
             (r"\b(tcl\s*65t8b|65-inch|4k\s*qled)\b", "hardware_profile", "Living room 4K display: TCL 65T8B (65\" QLED). High-saturation 4K visual target."),
             (r"\b(hungarian|magyar)\b", "language_locale", "Primary native language Hungarian (Magyar) alongside English for all user-facing tools."),
             (r"\b(continuous learning|continous learning|cephalo learn)\b", "second_brain_system", "Autonomous continuous learning enabled across all workspaces and sessions."),
+            (r"\b(research|investigat|specialt(y|ies)|best practices|industry standard|popular github)\b", "research_specialty_standard", "Autonomous deep research & specialty creation standard: first-principles fundamentals, industry standards, anti-AI-slop craftsmanship (Matt Pocock, Linux kernel), top GitHub repos, and bound user preferences."),
         ]
 
         seen_keys = set()

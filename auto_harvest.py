@@ -62,6 +62,8 @@ PREFERENCE_SIGNALS = [
     (r"\b(first language|native language|hungarian|magyar|marketplace)\b", "language_locale"),
     # Entertainment / Media
     (r"\b(movie|film|series|watch|show|cinema|director|bullet train|gentlemen)\b", "entertainment_preferences"),
+    # Deep Research & Investigation cues
+    (r"\b(research|investigat(e|ion|ing)|deep dive|deepness|best practices|industry standard|popular github|look into)\b", "deep_research_trigger"),
     # Specialty trigger / Technology adoption
     (r"\b(specialt(y|ies)|need specialties|build up our specialties|technolog(y|ies)|stack|architecture)\b", "specialty_domain_learning"),
 ]
@@ -175,8 +177,8 @@ def harvest_all_user_prompts(messages: List[Dict[str, Any]], conversation_id: st
             existing_contents.add(text)
             harvested_count += 1
 
-            # Autonomous Specialty creation for unknown technologies/methodologies
-            if "specialty_domain_learning" in detected_categories:
+            # Autonomous Specialty creation & Deep Research for unknown technologies/methodologies
+            if "specialty_domain_learning" in detected_categories or "deep_research_trigger" in detected_categories:
                 try:
                     from specialties_manager import SpecialtiesManager
                     sm = SpecialtiesManager()

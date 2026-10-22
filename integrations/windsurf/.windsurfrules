@@ -10,10 +10,11 @@ Path: C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain
 - Tone: Direct, technical, pragmatic, clean markdown, no fluff.
 - Language: Hungarian & English.
 
-## 2. Autonomous Learning Invariant
+## 2. Autonomous Learning & Deep Research Invariant
 - Capture user preferences, critiques, and architectural decisions immediately into Cephalo:
   `cephalo record "<decision>" --category "<category>"`
-- The user must never have to remind the agent to record decisions.
+- Trigger deep research and specialty creation by default for new frameworks/tools (`cephalo specialty research "<topic>"`).
+- The user must never have to remind the agent to record decisions or research standards.
 
 ## 3. Anti-Slop Discipline
 - Strict compliance with `global:coding-craftsmanship`.

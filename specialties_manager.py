@@ -299,6 +299,42 @@ class SpecialtiesManager:
         created["created"] = True
         return created
 
+    def research_and_create_specialty(
+        self,
+        topic: str,
+        project: str = "global",
+        subtopics: Optional[List[str]] = None,
+        notes: Optional[str] = None,
+        sync_to_vector_db: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Executes deep research across web search, GitHub repos, and craftsmanship standards,
+        then registers and indexes the resulting specialty.
+        """
+        from research_engine import DeepResearchEngine
+        engine = DeepResearchEngine()
+        synth = engine.synthesize_specialty(
+            topic=topic,
+            project=project,
+            subtopics=subtopics,
+            custom_notes=notes,
+        )
+
+        created = self.create_specialty(
+            name=synth["name"],
+            project=synth["project"],
+            fundamentals=synth["fundamentals"],
+            github_repos=synth["github_repos"],
+            key_takeaways=synth["key_takeaways"],
+            user_preferences=synth["user_preferences"],
+            tags=synth["tags"],
+            slug=synth.get("slug"),
+            sync_to_vector_db=sync_to_vector_db,
+        )
+        created["synthesized"] = synth
+        created["created"] = True
+        return created
+
     def auto_discover_and_create(
         self,
         text_or_items: Any,
