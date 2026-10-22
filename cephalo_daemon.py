@@ -160,7 +160,8 @@ class CephaloDaemon:
 
         try:
             signal.signal(signal.SIGINT, handle_signal)
-            signal.signal(signal.SIGTERM, handle_signal)
+            if sys.platform != "win32":
+                signal.signal(signal.SIGTERM, handle_signal)
         except Exception:
             pass
 
