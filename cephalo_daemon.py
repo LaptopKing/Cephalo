@@ -230,10 +230,7 @@ def start_daemon_detached(interval: int = DEFAULT_INTERVAL_SECONDS) -> bool:
     python_bin = sys.executable
     creation_flags = 0
     if sys.platform == "win32":
-        pythonw = Path(sys.executable).parent / "pythonw.exe"
-        if pythonw.exists():
-            python_bin = str(pythonw)
-        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000  # CREATE_NO_WINDOW
+        creation_flags = 0x08000000 | 0x00000200  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
 
     cmd = [
         python_bin,
