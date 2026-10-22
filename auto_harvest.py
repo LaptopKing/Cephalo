@@ -335,6 +335,14 @@ def handle_stop_hook(input_data: Dict[str, Any]) -> None:
                 }
                 save_state(state)
 
+    # Autonomous Continuous Learning Cycle
+    try:
+        from continuous_learner import ContinuousLearner
+        learner = ContinuousLearner()
+        learner.run_cycle()
+    except Exception:
+        pass
+
     print(json.dumps({}))
 
 

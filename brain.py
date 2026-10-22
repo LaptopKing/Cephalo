@@ -463,6 +463,50 @@ def cmd_fetch(args) -> None:
             print(f"[+] Page content sanitized & indexed into LanceDB [{rec.get('id')}].")
 
 
+def cmd_learn(args) -> None:
+    """Executes continuous learning across workspaces, stacks, and episodic memory."""
+    from continuous_learner import ContinuousLearner
+    learner = ContinuousLearner()
+    action = getattr(args, "learn_action", None) or "run"
+
+    if action == "run":
+        report = learner.run_cycle()
+        if args.json:
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 65)
+            print("  CEPHALO CONTINUOUS LEARNING CYCLE")
+            print("=" * 65)
+            print(f"Timestamp:        {report['timestamp']}")
+            print(f"Cycle Duration:   {report['duration_seconds']}s")
+            print(f"Projects Scanned: {report['scanned_projects_count']}")
+            print(f"Technologies:     {len(report['discovered_technologies'])} discovered")
+            if report['newly_synthesized_specialties']:
+                print(f"New Specialties:  {', '.join(report['newly_synthesized_specialties'])}")
+            else:
+                print("New Specialties:  All current stacks covered.")
+            print(f"Consolidated:     {len(report['consolidated_insights'])} high-level insights")
+            print("=" * 65)
+    elif action == "status":
+        state = learner.state
+        if args.json:
+            print(json.dumps(state, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 65)
+            print("  CEPHALO CONTINUOUS LEARNING STATUS")
+            print("=" * 65)
+            print(f"Total Cycles Run:     {state.get('total_cycles_run', 0)}")
+            print(f"Last Cycle:           {state.get('last_cycle_timestamp', 'Never')}")
+            print(f"Tracked Projects:     {len(state.get('tracked_projects', {}))}")
+            for pname, techs in state.get('tracked_projects', {}).items():
+                print(f"  • {pname}: {', '.join(techs) if techs else 'no standard manifests'}")
+            print(f"Discovered Stacks:    {len(state.get('discovered_technologies', []))}")
+            print(f"Synthesized Modules:  {len(state.get('synthesized_specialties', []))}")
+            print("=" * 65)
+    elif action == "watch":
+        learner.watch(interval_seconds=getattr(args, "interval", 120))
+
+
 def main():
     # Common parent parser so flags like --json and --table work before or after subcommands
     shared_parser = argparse.ArgumentParser(add_help=False)
@@ -584,6 +628,20 @@ def main():
     fetch_p.add_argument("--record", action="store_true", help="Automatically sanitize and index content into LanceDB.")
     fetch_p.add_argument("--category", type=str, default="web_research", help="Category for recorded memory.")
 
+    # Learn (Continuous Learning)
+    learn_p = subparsers.add_parser("learn", parents=[shared_parser], help="Autonomous continuous learning across codebases, manifests, and memory.")
+    learn_sub = learn_p.add_subparsers(dest="learn_action", help="Continuous learning action")
+
+    # learn run
+    learn_sub.add_parser("run", parents=[shared_parser], help="Execute a one-shot continuous learning cycle.")
+
+    # learn status
+    learn_sub.add_parser("status", parents=[shared_parser], help="Display continuous learning health and tracked topics.")
+
+    # learn watch
+    learn_watch_p = learn_sub.add_parser("watch", parents=[shared_parser], help="Run background continuous watcher.")
+    learn_watch_p.add_argument("--interval", type=int, default=120, help="Interval between cycles in seconds (default: 120).")
+
     args = parser.parse_args()
 
     if not args.command or args.command == "status":
@@ -600,6 +658,8 @@ def main():
         cmd_harvest(args)
     elif args.command == "specialty":
         cmd_specialty(args)
+    elif args.command == "learn":
+        cmd_learn(args)
     elif args.command == "email":
         cmd_email(args)
     elif args.command == "web":
