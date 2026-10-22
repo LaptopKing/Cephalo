@@ -38,13 +38,28 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "data"
 PID_FILE = DATA_DIR / "cephalo_daemon.pid"
 DAEMON_STATUS_FILE = DATA_DIR / "cephalo_daemon_status.json"
+DAEMON_LOG_FILE = DATA_DIR / "daemon.log"
 DEFAULT_INTERVAL_SECONDS = 90
 
-# Logging setup
+# Ensure data directory exists
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Defend against pythonw.exe NoneType stdout/stderr on Windows
+if sys.stdout is None:
+    sys.stdout = open(DAEMON_LOG_FILE, "a", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(DAEMON_LOG_FILE, "a", encoding="utf-8")
+
+# Logging setup with both FileHandler and StreamHandler
+handlers = [logging.FileHandler(DAEMON_LOG_FILE, encoding="utf-8")]
+if sys.stderr and hasattr(sys.stderr, "write"):
+    handlers.append(logging.StreamHandler(sys.stderr))
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [Cephalo:Daemon] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=handlers,
 )
 logger = logging.getLogger("cephalo.daemon")
 
