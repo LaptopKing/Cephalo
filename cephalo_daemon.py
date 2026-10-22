@@ -212,12 +212,16 @@ def start_daemon_detached(interval: int = DEFAULT_INTERVAL_SECONDS) -> bool:
         print(f"[!] Cephalo Daemon is already running (PID: {status['pid']}).")
         return True
 
+    python_bin = sys.executable
     creation_flags = 0
     if sys.platform == "win32":
-        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        pythonw = Path(sys.executable).parent / "pythonw.exe"
+        if pythonw.exists():
+            python_bin = str(pythonw)
+        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000  # CREATE_NO_WINDOW
 
     cmd = [
-        sys.executable,
+        python_bin,
         str(SCRIPT_DIR / "cephalo_daemon.py"),
         "run",
         "--interval",
@@ -233,9 +237,16 @@ def start_daemon_detached(interval: int = DEFAULT_INTERVAL_SECONDS) -> bool:
             stderr=subprocess.DEVNULL,
             close_fds=True,
         )
-        print(f"[+] Cephalo Always-On Daemon launched successfully in background (PID: {proc.pid}).")
+        # Give process a moment to initialize and write its PID file
+        time.sleep(1)
+        check = get_daemon_status()
+        active_pid = check.get("pid") or proc.pid
+        print(f"[+] Cephalo Always-On Daemon launched successfully in background (PID: {active_pid}).")
         print(f"    Check status anytime via: cephalo daemon status")
         return True
+    except Exception as e:
+        print(f"[-] Failed to start daemon: {e}")
+        return False
     except Exception as e:
         print(f"[-] Failed to start daemon: {e}")
         return False
