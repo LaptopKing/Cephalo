@@ -561,7 +561,36 @@ def cmd_daemon(args) -> None:
         uninstall_windows_task()
 
 
+def maybe_auto_learn() -> None:
+    """Opportunistic continuous learning trigger.
+    Runs a fast sub-second learning cycle if more than 10 minutes have elapsed since the last cycle.
+    Guarantees continuous learning across all agent harnesses without requiring manual commands.
+    """
+    try:
+        from continuous_learner import ContinuousLearner
+        learner = ContinuousLearner()
+        last_str = learner.state.get("last_cycle_timestamp")
+        should_run = False
+        if not last_str:
+            should_run = True
+        else:
+            try:
+                last_dt = datetime.datetime.fromisoformat(last_str)
+                elapsed = (datetime.datetime.now().astimezone() - last_dt).total_seconds()
+                if elapsed > 600:  # 10 minutes
+                    should_run = True
+            except Exception:
+                should_run = True
+
+        if should_run:
+            learner.run_cycle()
+    except Exception:
+        pass
+
+
 def main():
+    maybe_auto_learn()
+
     # Common parent parser so flags like --json and --table work before or after subcommands
     shared_parser = argparse.ArgumentParser(add_help=False)
     shared_parser.add_argument("--json", action="store_true", help="Output results in machine-readable JSON format for agents.")

@@ -1,0 +1,5 @@
+# Aider pair programming configuration for Cephalo
+auto-commits: false
+dark-mode: true
+read:
+  - C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\USER_PROFILE.md

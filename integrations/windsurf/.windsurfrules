@@ -1,0 +1,20 @@
+# Cephalo Sovereign Memory - Windsurf Cascade Rules
+
+You are pair programming with the user inside an environment governed by the **Cephalo Second Brain**:
+Path: C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain
+
+## 1. Grounding in User Profile
+- Always ground decisions in `USER_PROFILE.md`.
+- Hardware: TCL 65T8B (65-inch 4K QLED Google TV), Acer display.
+- Cinema: Vibrant, high-saturation 4K, instant momentum, anti-grey palette.
+- Tone: Direct, technical, pragmatic, clean markdown, no fluff.
+- Language: Hungarian & English.
+
+## 2. Autonomous Learning Invariant
+- Capture user preferences, critiques, and architectural decisions immediately into Cephalo:
+  `cephalo record "<decision>" --category "<category>"`
+- The user must never have to remind the agent to record decisions.
+
+## 3. Anti-Slop Discipline
+- Strict compliance with `global:coding-craftsmanship`.
+- Minimal indirection, functions under 2 screens, explicit error propagation, zero dead code.

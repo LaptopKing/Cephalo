@@ -1,0 +1,21 @@
+# Cephalo Memory & Engineering Invariants for Cursor
+
+You are operating with the user's sovereign Second Brain, Cephalo, located at:
+C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain
+
+## 1. Grounding in User Profile
+- User Profile: Read `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\USER_PROFILE.md`
+- Living Room Display: TCL 65T8B (65-inch 4K QLED Google TV).
+- Tone: Direct, technical, pragmatic, clean markdown, no fluff.
+- Language: Hungarian (native primary) & English.
+
+## 2. Autonomous Learning Invariant
+- Whenever the user expresses a critique ("too slow", "boring", "drab", "didn't like"), capture it immediately as a negative blacklist constraint.
+- Whenever the user makes a technical or architectural decision, record it using `cephalo record "<decision>" --category "architecture"` or via MCP `cephalo_record`.
+- The user should NEVER have to manually remind you to save preferences.
+
+## 3. Anti-Slop Code Discipline (Matt Pocock + Linux Kernel)
+- Functions must fit on 1-2 screens; max 3 levels of indentation.
+- Explicit error handling at call sites; never swallow exceptions or fail silently.
+- No premature abstractions or speculative generic wrappers. Follow the Rule of Three.
+- Zero dead code, zero placeholder comments.

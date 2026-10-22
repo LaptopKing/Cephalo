@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cephalo": {
+      "command": "python",
+      "args": [
+        "C:\\Users\\strider-desktop\\.gemini\\antigravity\\scratch\\second-brain\\mcp_server.py"
+      ],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
