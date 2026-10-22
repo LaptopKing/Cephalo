@@ -133,10 +133,10 @@ class CephaloDaemon:
             git_changes = status_proc.stdout.strip()
             if git_changes:
                 logger.info("Detected local Cephalo changes. Synchronizing to GitHub...")
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "add", "."], check=True, timeout=10)
+                subprocess.run(["git", "-C", str(SCRIPT_DIR), "add", "."], capture_output=True, check=True, timeout=15)
                 commit_msg = f"chore(auto-sync): autonomous continuous learning cycle [{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}]"
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "commit", "-m", commit_msg], check=True, timeout=10)
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "push", "origin", "main"], check=True, timeout=20)
+                subprocess.run(["git", "-C", str(SCRIPT_DIR), "commit", "-m", commit_msg], capture_output=True, check=True, timeout=15)
+                subprocess.run(["git", "-C", str(SCRIPT_DIR), "push", "origin", "main"], capture_output=True, check=True, timeout=25)
                 logger.info("Successfully pushed updates to LaptopKing/Cephalo.")
                 cycle_result["git_pushed"] = True
             else:
