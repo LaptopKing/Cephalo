@@ -58,6 +58,8 @@ PREFERENCE_SIGNALS = [
     (r"\b(my tv is|my monitor is|my setup|hardware|graphics card|gpu|resolution|screen size|tcl|qled)\b", "hardware_spec"),
     # Directives / Workflows
     (r"\b(should always|never do|always use|my rule is|by default|from now on)\b", "workflow_rule"),
+    # Pre-recommendation Validation Invariant
+    (r"\b(always validate|validate before|verify before|double check|confirm before recommending|never assume|validate recommendation)\b", "validation_invariant"),
     # First language / regional
     (r"\b(first language|native language|hungarian|magyar|marketplace)\b", "language_locale"),
     # Entertainment / Media
@@ -254,7 +256,9 @@ def handle_session_start(input_data: Dict[str, Any]) -> None:
         "🧠 Cephalo Second Brain is active and mounted at "
         r"C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain."
         + profile_summary +
-        " Ground decisions in USER_PROFILE.md and use `cephalo search` / `cephalo specialty` commands."
+        " Mandatory Core Invariant: ALWAYS validate ground truth before recommending. "
+        "Never extrapolate or assume vendor shipping, pricing, or compatibility without verified facts. "
+        "Ground decisions in USER_PROFILE.md and use `cephalo search` / `cephalo specialty` commands."
     )
 
     response = {
@@ -302,6 +306,12 @@ def handle_pre_invocation(input_data: Dict[str, Any]) -> None:
 
     inject_steps = []
     if latest_user_text:
+        # Ground-truth validation enforcement on recommendation / sourcing queries
+        if re.search(r"\b(recommend|where (to|can I) (buy|order|get)|cheapest (way|option)|which (part|vendor|shop|tool|library))\b", latest_user_text, re.IGNORECASE):
+            inject_steps.append({
+                "ephemeralMessage": "🧠 [Cephalo Core Invariant]: ALWAYS validate before recommending. Verify real shipping policies, exact pricing, and community ground-truth before proposing options."
+            })
+
         match = query_relevant_memory(latest_user_text)
         if match:
             mid, content, dist = match

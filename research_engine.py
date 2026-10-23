@@ -26,6 +26,8 @@ Core Methodological Invariants:
    - Simplicity is key, ALWAYS (clean stone/paper canvas, modern pastel semantic accents, zero raw HTML).
 6. Bound User Preferences & Target Hardware:
    - Injects user profile constraints (TCL 65T8B TV for multimedia/video, English code/docs, silent background execution).
+7. Strict Pre-Recommendation Validation Invariant:
+   - Never synthesize or recommend theoretical options without active empirical verification (pricing, delivery logistics, community track record; zero unvalidated assumptions).
 """
 
 from __future__ import annotations

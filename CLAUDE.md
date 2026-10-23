@@ -51,3 +51,4 @@ This file informs **Claude Code** (and compatible agent harnesses) on how to ope
    - Matt Pocock rules: specs before tickets, tickets before code, vertical slices.
    - Linux kernel rules: functions fit on 1-2 screens, maximum 3 levels of indentation, explicit error handling at call sites, no swallowed exceptions, zero dead code.
 6. **Token Efficiency:** When consulting past context, only inject memories when they directly add concrete value. If a query touches completely new topics never discussed before, stay silent while still logging the prompt.
+7. **Strict Pre-Recommendation Validation Invariant:** ALWAYS validate before recommending. Never extrapolate or assume vendor shipping, real-world service terms, parts compatibility, or pricing without verified ground truth. The agent MUST actively cross-check operational reality and community track records before presenting any recommendation.

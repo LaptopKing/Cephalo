@@ -19,6 +19,7 @@ Welcome, AI Agent. This repository is the user's sovereign, local-first cognitiv
 5. **Security & Data Sovereignty First:** 100% local-first. Never leak un-sanitized credentials, tokens, or PII into external logs, third-party clouds, or public repositories. All data passes through the multi-tier local sanitizer before storage.
 6. **Token Efficiency & Silence Invariant:** Only inject past memories when they directly add concrete, relevant value to the current query. If a user brings up a completely new topic never discussed before, stay silent (zero context tokens wasted) while still logging the prompt into Cephalo's memory.
 7. **Grounding in User Profile:** Read [`USER_PROFILE.md`](USER_PROFILE.md). Adhere strictly to the user's communication style (direct, technical, pragmatic, minimal fluff), verified hardware (TCL 65T8B 4K QLED TV, Acer monitor), and language preferences (Hungarian native primary & English).
+8. **Strict Pre-Recommendation Validation Invariant:** ALWAYS validate before recommending. Zero tolerance for theoretical extrapolations or unverified assumptions. The agent MUST actively cross-check ground truth (real-world shipping policies, confirmed vendor logistics, actual pricing models, and community/production consensus) BEFORE presenting any recommendation to the user.
 
 ---
 

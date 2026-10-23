@@ -18,7 +18,15 @@ Before answering questions concerning past decisions, preferences, device config
 
 ---
 
-## 2. Autonomous Memory Capture Invariant (MANDATORY)
+## 2. Strict Pre-Recommendation Validation Invariant (MANDATORY)
+**Before presenting ANY recommendation to the user** (parts sourcing, vendor channels, tooling, libraries, or architecture):
+1. **Zero Theoretical Extrapolations:** NEVER assume or guess real-world vendor capabilities, delivery channels, service terms, or pricing models based on generic theory (e.g. assuming a car dealership ships small parts, guessing delivery fees, or assuming parts compatibility).
+2. **Mandatory Ground-Truth Verification:** The agent MUST actively cross-check and verify ground truth (real shipping policies, confirmed pricing, vendor logistics, and automotive/technical community track record) BEFORE recommending.
+3. **Explicit Uncertainty:** If an option or vendor channel cannot be verified with 100% concrete ground truth, explicitly declare the uncertainty and provide only verified alternatives.
+
+---
+
+## 3. Autonomous Memory Capture Invariant (MANDATORY)
 
 ### The Turn-End Invariant
 **Before completing any conversation turn**, the agent MUST review the user's latest statements:
@@ -37,14 +45,14 @@ Before answering questions concerning past decisions, preferences, device config
 
 ---
 
-## 3. Dual-Layer Redundancy Architecture
+## 4. Dual-Layer Redundancy Architecture
 Cephalo operates a two-tier safety net so nothing is ever dropped:
 1. **Agent Active Ingestion:** The agent actively runs `cephalo record` and updates `USER_PROFILE.md` when it detects user insights during the turn.
 2. **Harness Hook Autonomous Harvester (`auto_harvest.py` via `hooks.json`):** Even if an agent fails to execute the command, the harness `Stop` lifecycle hook automatically scans the raw transcript on turn completion, detects preference markers, and logs them to `prompts.jsonl`.
 
 ---
 
-## 4. Continuous GitHub Synchronization
+## 5. Continuous GitHub Synchronization
 When Cephalo code, blueprints, or documentation are modified, ensure they are synchronized with the local git repository:
 ```powershell
 Set-Location "C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain"
