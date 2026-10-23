@@ -515,10 +515,16 @@ def cmd_web(args) -> None:
         # Organic Web Results
         console.print("\n[bold]Web Results[/bold]")
         for idx, r in enumerate(serp.organic_results, 1):
+            clean_snip = re.sub(r'```[\s\S]*?```', '', r.snippet)
+            clean_snip = re.sub(r'\{/\*[\s\S]*?\*/\}', '', clean_snip)
+            clean_snip = re.sub(r'\s+', ' ', clean_snip).strip()
+            if len(clean_snip) > 220:
+                clean_snip = clean_snip[:220].rsplit(' ', 1)[0] + "..."
+
             console.print(f"  [bold cyan]{idx}. {r.title}[/bold cyan]")
             console.print(f"     [dim]{r.display_url or r.url}[/dim]")
-            if r.snippet:
-                console.print(f"     {r.snippet}")
+            if clean_snip:
+                console.print(f"     {clean_snip}")
             console.print()
 
         # Social & Community Blocks
