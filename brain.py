@@ -486,6 +486,11 @@ def cmd_web(args) -> None:
         print(json.dumps(serp.to_dict(), indent=2, ensure_ascii=False))
         return
 
+    # 2. Output clean native Markdown SERP card if requested
+    if getattr(args, "markdown", False):
+        print(serp.to_markdown())
+        return
+
     # 2. Render Google-Style SERP via rich or elegant terminal layout
     try:
         from rich.console import Console
@@ -871,6 +876,7 @@ def main():
     web_p = subparsers.add_parser("web", parents=[shared_parser], help="Search the live web with Google-style Quick Summary, organic results, and social blocks.")
     web_p.add_argument("query", type=str, help="Search query string.")
     web_p.add_argument("--limit", type=int, default=5, help="Maximum number of search results (default: 5).")
+    web_p.add_argument("--markdown", action="store_true", help="Output clean native Markdown SERP card (ideal for piping to agents).")
     web_p.add_argument("--record", action="store_true", help="Automatically sanitize and index results into LanceDB.")
     web_p.add_argument("--category", type=str, default="web_research", help="Category for recorded memory.")
     web_p.add_argument("--html", action="store_true", help="Generate an interactive Google-style HTML SERP interface.")

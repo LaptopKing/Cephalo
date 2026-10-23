@@ -53,11 +53,127 @@ logger = logging.getLogger("cephalo.web_search")
 
 # Import SERP data structures
 try:
-    from serp_renderer import CephaloSERP, SearchItem, render_serp_html
+    from serp_renderer import CephaloSERP, SearchItem, get_social_badge, render_serp_html
 except ImportError:
     # Fallback if imported from a different cwd
     sys.path.insert(0, str(BASE_DIR))
-    from serp_renderer import CephaloSERP, SearchItem, render_serp_html
+    from serp_renderer import CephaloSERP, SearchItem, get_social_badge, render_serp_html
+
+
+def is_deep_discussion_url(url: str) -> bool:
+    """
+    Validates whether a URL points to an actual discussion thread, forum topic,
+    issue, or video, rather than a generic landing page, channel root, or category index.
+    """
+    if not url:
+        return False
+    try:
+        p = urllib.parse.urlparse(url)
+        netloc = p.netloc.lower()
+        path = p.path.lower()
+        query = p.query.lower()
+
+        # Reddit: strictly requires /comments/<id>/
+        if "reddit.com" in netloc:
+            return "/comments/" in path
+
+        # YouTube: strictly requires watch?v= or youtu.be/<id> (reject channel/playlist roots)
+        if "youtube.com" in netloc or "youtu.be" in netloc:
+            if any(k in path for k in ["/channel/", "/@", "/playlist", "/feed"]):
+                return False
+            return "watch?v=" in url or "youtu.be/" in url
+
+        # GitHub: strictly requires /discussions/, /issues/, or /pull/
+        if "github.com" in netloc:
+            if any(k in path for k in ["/blob/", "/tree/", "/releases", "/commit"]):
+                return False
+            return any(k in path for k in ["/discussions/", "/issues/", "/pull/"])
+
+        # Stack Overflow / Stack Exchange: strictly requires /questions/
+        if "stackoverflow.com" in netloc or "stackexchange.com" in netloc:
+            return "/questions/" in path
+
+        # Hacker News: strictly requires item?id=
+        if "news.ycombinator.com" in netloc:
+            return "item?id=" in query or "item?id=" in url
+
+        # Lobsters: strictly requires /s/
+        if "lobste.rs" in netloc:
+            return "/s/" in path
+
+        # Specialized community forums: AVSForum, Tom's Hardware, Linus Tech Tips, MacRumors
+        if any(f in netloc for f in ["avsforum.com", "tomshardware.com", "linustechtips.com", "macrumors.com"]):
+            return any(k in path for k in ["/threads/", "/topic/"])
+
+        # Generic Discourse / forum thread patterns
+        if re.search(r'/(t|threads|topic|thread|discussion|viewtopic\.php)/[a-zA-Z0-9_\-]+', path):
+            return True
+
+        return False
+    except Exception:
+        return False
+
+
+def select_community_targets(query: str) -> List[str]:
+    """
+    Selects high-relevance community and forum domains dynamically based on query topic.
+    """
+    q_lower = query.lower()
+
+    # Hardware, Audio/Video, Home Theater, Displays (e.g. TCL TV, Monitors, Audio)
+    hardware_keywords = [
+        "tv", "oled", "qled", "display", "screen", "audio", "speaker", "soundbar",
+        "gpu", "cpu", "monitor", "tcl", "hdmi", "receiver", "amp", "subwoofer", "dolby", "rtings",
+    ]
+    if any(re.search(r'\b' + re.escape(w) + r'\b', q_lower) for w in hardware_keywords):
+        return [
+            "avsforum.com",
+            "reddit.com",
+            "youtube.com",
+            "forums.tomshardware.com",
+            "linustechtips.com",
+        ]
+
+    # Automotive & Mechanics (e.g. MyGarage)
+    automotive_keywords = [
+        "car", "vehicle", "engine", "transmission", "brake", "oil", "bmw", "audi",
+        "mercedes", "tires", "garage", "exhaust", "mechanic",
+    ]
+    if any(re.search(r'\b' + re.escape(w) + r'\b', q_lower) for w in automotive_keywords):
+        return [
+            "reddit.com",
+            "youtube.com",
+            "bobistheoilguy.com",
+            "garagejournal.com",
+        ]
+
+    # Software Engineering, Programming, Web Dev
+    dev_keywords = [
+        "code", "nextjs", "next.js", "react", "python", "typescript", "javascript",
+        "rust", "golang", "go", "docker", "k8s", "kubernetes", "bug", "error",
+        "api", "framework", "git", "npm", "pip", "sql", "postgres", "redis",
+        "database", "css", "html", "tailwind", "fastapi", "vue", "angular", "node",
+        "nodejs", "prisma", "orm", "sdk", "backend", "frontend",
+    ]
+    if any(re.search(r'\b' + re.escape(w) + r'\b', q_lower) for w in dev_keywords):
+        return [
+            "github.com",
+            "news.ycombinator.com",
+            "stackoverflow.com",
+            "lobste.rs",
+            "reddit.com",
+            "youtube.com",
+        ]
+
+    # General default: high-relevance mix
+    return [
+        "reddit.com",
+        "news.ycombinator.com",
+        "youtube.com",
+        "github.com",
+        "stackoverflow.com",
+    ]
+
 
 
 @dataclass
@@ -297,14 +413,14 @@ class WebSearchEngine:
         max_results: int = 5,
         include_social: bool = True,
     ) -> Tuple[List[SearchItem], List[SearchItem]]:
-        """Queries Exa API for both organic and social streams with text highlights."""
+        """Queries Exa API for both organic and deep social discussion streams with text highlights."""
         from exa_py import Exa
         exa = Exa(api_key=self.exa_key)
 
         # Stream 1: Organic Results
         res_organic = exa.search(
             query,
-            num_results=max_results,
+            num_results=max_results + 2,
             contents={"highlights": True, "text": False},
         )
 
@@ -325,16 +441,26 @@ class WebSearchEngine:
             )
             organic_items.append(item)
 
+        # Stream 2: Deep Social & Community Discussions (Enforce Actual Threads)
         social_items: List[SearchItem] = []
         if include_social:
+            target_domains = select_community_targets(query)
+            seen_urls = set()
             try:
+                # Primary community query with topic-targeted domains
                 res_social = exa.search(
                     query,
-                    include_domains=self.SOCIAL_DOMAINS,
-                    num_results=3,
+                    include_domains=target_domains,
+                    num_results=8,
                     contents={"highlights": True, "text": False},
                 )
                 for r in res_social.results:
+                    if not is_deep_discussion_url(r.url):
+                        continue
+                    if r.url in seen_urls:
+                        continue
+                    seen_urls.add(r.url)
+
                     domain = urllib.parse.urlparse(r.url).netloc.lower()
                     snippet = (r.highlights[0] if r.highlights else "").replace("\n", " ").strip()
                     s_type = self._classify_social(domain)
@@ -350,10 +476,50 @@ class WebSearchEngine:
                             extra={"highlights": r.highlights},
                         )
                     )
+                    if len(social_items) >= 4:
+                        break
             except Exception as e:
-                logger.debug(f"Exa social search failed: {e}")
+                logger.debug(f"Exa targeted social search failed: {e}")
 
-        return organic_items, social_items
+            # If fewer than 2 deep discussions found, run a targeted discussion fallback
+            if len(social_items) < 2:
+                try:
+                    fallback_domains = ["news.ycombinator.com", "github.com", "stackoverflow.com", "youtube.com", "lobste.rs"]
+                    fallback_q = f"{query} discussion problem issue feedback"
+                    res_fb = exa.search(
+                        fallback_q,
+                        include_domains=fallback_domains,
+                        num_results=6,
+                        contents={"highlights": True, "text": False},
+                    )
+                    for r in res_fb.results:
+                        if not is_deep_discussion_url(r.url):
+                            continue
+                        if r.url in seen_urls:
+                            continue
+                        seen_urls.add(r.url)
+
+                        domain = urllib.parse.urlparse(r.url).netloc.lower()
+                        snippet = (r.highlights[0] if r.highlights else "").replace("\n", " ").strip()
+                        s_type = self._classify_social(domain)
+                        social_items.append(
+                            SearchItem(
+                                title=r.title or f"Discussion on {domain}",
+                                url=r.url,
+                                display_url=domain + urllib.parse.urlparse(r.url).path,
+                                snippet=snippet,
+                                domain=domain,
+                                source="exa_social_fallback",
+                                social_type=s_type,
+                                extra={"highlights": r.highlights},
+                            )
+                        )
+                        if len(social_items) >= 4:
+                            break
+                except Exception as e:
+                    logger.debug(f"Exa discussion fallback query failed: {e}")
+
+        return organic_items[:max_results], social_items[:4]
 
     def _search_duckduckgo_serp(
         self,
@@ -361,8 +527,8 @@ class WebSearchEngine:
         max_results: int = 5,
         include_social: bool = True,
     ) -> Tuple[List[SearchItem], List[SearchItem]]:
-        """Zero-key DuckDuckGo HTML parser with fixed snippet extraction and social blocks."""
-        raw_items = self._fetch_duckduckgo_raw(query, max_results=max_results + 3)
+        """Zero-key DuckDuckGo HTML parser with fixed snippet extraction and deep social blocks."""
+        raw_items = self._fetch_duckduckgo_raw(query, max_results=max_results + 5)
 
         organic_items: List[SearchItem] = []
         social_items: List[SearchItem] = []
@@ -378,17 +544,20 @@ class WebSearchEngine:
                 source="duckduckgo",
                 social_type=s_type,
             )
-            if s_type and include_social:
+            # Strictly enforce deep discussion URL validation
+            if s_type and is_deep_discussion_url(it["url"]) and include_social:
                 social_items.append(search_item)
             else:
                 organic_items.append(search_item)
 
-        # If social items are missing and social is requested, run targeted discussion search
+        # If social items are missing and social is requested, run targeted deep discussion search
         if include_social and len(social_items) < 2:
             try:
-                social_q = f"{query} (site:reddit.com OR site:youtube.com OR site:github.com)"
-                raw_socials = self._fetch_duckduckgo_raw(social_q, max_results=3)
+                social_q = f"{query} (site:reddit.com/r/*/comments OR site:news.ycombinator.com/item OR site:github.com/*/discussions OR site:stackoverflow.com/questions)"
+                raw_socials = self._fetch_duckduckgo_raw(social_q, max_results=4)
                 for s in raw_socials:
+                    if not is_deep_discussion_url(s["url"]):
+                        continue
                     s_type = self._classify_social(s["domain"])
                     social_items.append(
                         SearchItem(
@@ -398,13 +567,14 @@ class WebSearchEngine:
                             snippet=s["snippet"],
                             domain=s["domain"],
                             source="duckduckgo_social",
-                            social_type=s_type or "reddit",
+                            social_type=s_type or "community",
                         )
                     )
             except Exception:
                 pass
 
-        return organic_items[:max_results], social_items[:3]
+        return organic_items[:max_results], social_items[:4]
+
 
     def _fetch_duckduckgo_raw(self, query: str, max_results: int = 10) -> List[Dict[str, Any]]:
         """Submits DuckDuckGo HTML request and extracts full titles, clean URLs, and snippets."""
@@ -465,7 +635,7 @@ class WebSearchEngine:
         return results
 
     def _classify_social(self, domain: str) -> Optional[str]:
-        """Classifies a domain into its social category."""
+        """Classifies a domain into its community/social category."""
         domain = domain.lower()
         if "reddit.com" in domain:
             return "reddit"
@@ -479,7 +649,18 @@ class WebSearchEngine:
             return "stackoverflow"
         if "news.ycombinator.com" in domain:
             return "hackernews"
+        if "lobste.rs" in domain:
+            return "lobsters"
+        if "avsforum.com" in domain:
+            return "avsforum"
+        if "tomshardware.com" in domain:
+            return "tomshardware"
+        if "linustechtips.com" in domain:
+            return "linustechtips"
+        if any(k in domain for k in ["discourse", "forum", "community"]):
+            return "forum"
         return None
+
 
     def _synthesize_quick_summary(
         self,
