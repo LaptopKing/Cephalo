@@ -15,6 +15,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -474,25 +475,103 @@ def cmd_email(args) -> None:
 
 
 def cmd_web(args) -> None:
-    """Searches the live web via WebSearchEngine with optional direct indexing."""
+    """Searches the live web via WebSearchEngine with Google-style SERP, Quick Summary, and Social Blocks."""
     from web_search import WebSearchEngine
     engine = WebSearchEngine()
-    results = engine.search(args.query, max_results=args.limit)
+    include_social = not getattr(args, "no_social", False)
+    serp = engine.search_serp(args.query, max_results=args.limit, include_social=include_social)
 
+    # 1. Output machine-readable JSON if requested
     if args.json:
-        print(json.dumps([r.to_dict() for r in results], indent=2, ensure_ascii=False))
-    else:
+        print(json.dumps(serp.to_dict(), indent=2, ensure_ascii=False))
+        return
+
+    # 2. Render Google-Style SERP via rich or elegant terminal layout
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+        console = Console()
+
+        console.print(f"\n[bold blue]✦ Cephalo Search[/bold blue] [dim]•[/dim] [bold]{serp.query}[/bold] [dim]({len(serp.organic_results) + len(serp.social_blocks)} results in {serp.execution_time_seconds:.2f}s via {serp.engine_used})[/dim]")
+
+        # Quick Summary Box (AI Overview)
+        summary_body = f"[bold]{serp.quick_summary}[/bold]\n"
+        if serp.key_takeaways:
+            summary_body += "\n[dim]Key Takeaways:[/dim]\n"
+            for t in serp.key_takeaways:
+                summary_body += f" [green]•[/green] {t}\n"
+        if serp.citations:
+            citation_str = " ".join([r"[" + c.get('domain', 'source') + r"]" for c in serp.citations])
+            summary_body += f"\n[dim]Key Sources:[/dim] {citation_str}"
+
+        console.print(Panel(
+            summary_body.strip(),
+            title="[bold blue]Quick Summary[/bold blue] (AI Overview)",
+            border_style="blue",
+            padding=(1, 2),
+        ))
+
+        # Organic Web Results
+        console.print("\n[bold]Web Results[/bold]")
+        for idx, r in enumerate(serp.organic_results, 1):
+            console.print(f"  [bold cyan]{idx}. {r.title}[/bold cyan]")
+            console.print(f"     [dim]{r.display_url or r.url}[/dim]")
+            if r.snippet:
+                console.print(f"     {r.snippet}")
+            console.print()
+
+        # Social & Community Blocks
+        if serp.social_blocks:
+            console.print("[bold]Discussions & Community Highlights[/bold]")
+            social_table = Table(show_header=True, header_style="bold magenta", box=None, padding=(0, 1))
+            social_table.add_column("Platform", width=14)
+            social_table.add_column("Title / Discussion", style="bold")
+            social_table.add_column("URL", style="dim")
+
+            for s in serp.social_blocks:
+                p_name = (s.social_type or "Community").capitalize()
+                social_table.add_row(f"[{p_name}]", s.title, s.url)
+            console.print(social_table)
+
+    except Exception:
+        # Fallback to standard clean terminal output if rich fails
         print("=" * 65)
-        print(f"  CEPHALO WEB SEARCH: '{args.query}' ({len(results)} results)")
+        print(f"  CEPHALO SEARCH: '{serp.query}' ({serp.engine_used})")
         print("=" * 65)
-        for idx, r in enumerate(results, 1):
+        print("\n--- QUICK SUMMARY (AI OVERVIEW) ---")
+        print(serp.quick_summary)
+        if serp.key_takeaways:
+            print("\nKey Takeaways:")
+            for t in serp.key_takeaways:
+                print(f"  • {t}")
+        print("\n--- WEB RESULTS ---")
+        for idx, r in enumerate(serp.organic_results, 1):
             print(f"[{idx}] {r.title}")
             print(f"    URL: {r.url}")
             print(f"    {r.snippet}\n")
+        if serp.social_blocks:
+            print("--- DISCUSSIONS & COMMUNITY ---")
+            for s in serp.social_blocks:
+                print(f"  [{s.social_type or 'Community'}] {s.title} ({s.url})")
         print("=" * 65)
 
-    if getattr(args, "record", False) and results:
-        combined = f"Web Search for '{args.query}':\n" + "\n".join([f"- {r.title} ({r.url}): {r.snippet}" for r in results])
+    # 3. HTML artifact generation & browser preview
+    html_flag = getattr(args, "html", False)
+    open_flag = getattr(args, "open", False)
+    if html_flag or open_flag:
+        slug = re.sub(r'[^a-z0-9]+', '-', args.query.lower()).strip('-')[:40] or "search"
+        html_path = DATA_DIR / "serp_cache" / f"{slug}.html"
+        engine.render_serp_html(serp, output_path=html_path, standalone=True)
+        print(f"\n[+] Interactive SERP generated: {html_path}")
+        if open_flag:
+            import webbrowser
+            webbrowser.open(str(html_path.resolve()))
+
+    # 4. Record to LanceDB if requested
+    if getattr(args, "record", False) and (serp.organic_results or serp.quick_summary):
+        combined = f"Web Search for '{args.query}':\nSummary: {serp.quick_summary}\n\nTop Results:\n"
+        combined += "\n".join([f"- {r.title} ({r.url}): {r.snippet}" for r in serp.organic_results[:3]])
         pipeline = get_pipeline(table_name=args.table)
         rec = pipeline.record(text=combined, category=args.category, source="web_search", intent=args.query)
         if not args.json:
@@ -783,11 +862,14 @@ def main():
     email_send_p.add_argument("--confirm", action="store_true", help="Explicit user confirmation token.")
 
     # Web Search
-    web_p = subparsers.add_parser("web", parents=[shared_parser], help="Search the live web and optionally record results.")
+    web_p = subparsers.add_parser("web", parents=[shared_parser], help="Search the live web with Google-style Quick Summary, organic results, and social blocks.")
     web_p.add_argument("query", type=str, help="Search query string.")
     web_p.add_argument("--limit", type=int, default=5, help="Maximum number of search results (default: 5).")
     web_p.add_argument("--record", action="store_true", help="Automatically sanitize and index results into LanceDB.")
     web_p.add_argument("--category", type=str, default="web_research", help="Category for recorded memory.")
+    web_p.add_argument("--html", action="store_true", help="Generate an interactive Google-style HTML SERP interface.")
+    web_p.add_argument("--open", action="store_true", help="Generate and open the HTML SERP in your default web browser.")
+    web_p.add_argument("--no-social", action="store_true", help="Exclude social and discussion blocks.")
 
     # Web Fetch
     fetch_p = subparsers.add_parser("fetch", parents=[shared_parser], help="Extract clean readable text from a URL (supports static and dynamic Chromium) and optionally record it.")

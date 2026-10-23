@@ -70,8 +70,27 @@ Command                       | Description
 :---------------------------- | :---------------------------------------------
 `cephalo status`              | System health, LanceDB row count, prompt index
 `cephalo profile`             | Print or view USER_PROFILE.md
-`cephalo search "<query>"`    | Hybrid semantic (Qwen 1024d) + BM25 search
+`cephalo search "<query>"`    | Hybrid semantic (Qwen 1024d) + BM25 memory search
+`cephalo web "<query>"`       | Google-style live web search: AI Quick Summary, organic results & social blocks
+`cephalo web "<query>" --html`| Generate interactive Google-style SERP Generative UI
+`cephalo web "<query>" --open`| Generate and open interactive SERP in default browser
+`cephalo fetch "<url>"`       | Clean text extraction (supports --dynamic Chromium SPA crawling)
 `cephalo record "<text>"`     | Sanitize and index into vector memory
 `cephalo specialty list`      | View all domain specialties across projects
 `cephalo specialty create`    | Register domain knowledge module
 `cephalo harvest`             | Audit past transcripts across workspaces
+
+---
+
+## 5. Google-Style Web Search & Generative UI UX
+
+When the user requests web searches or current information:
+- Execute `cephalo web "<query>"` or call MCP tool `cephalo_web_search`.
+- The UX presents:
+  1. **Quick Summary (AI Overview)**: Synthesized direct answer answering the search query from top results + key bullet takeaways + domain citation pills.
+  2. **Organic Web Results**: Favicon, site breadcrumb path, clickable title, and clean readable snippet.
+  3. **Social & Community Blocks**: Embedded discussion cards for Reddit (`r/subreddit`), YouTube videos, GitHub repositories, and X posts.
+- For interactive chat embedding in Antigravity, generate the HTML widget and embed it:
+  ```html
+  <agent-embed src="file:///path/to/serp_cache/<slug>.html"></agent-embed>
+  ```

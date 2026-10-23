@@ -34,6 +34,16 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Force UTF-8 on Windows stdio for JSON-RPC messages
+if sys.platform == "win32":
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Set up logging to stderr so stdout is strictly preserved for JSON-RPC messages
 logging.basicConfig(
     level=logging.INFO,
@@ -216,6 +226,59 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                 "required": ["topic"],
             },
         },
+        {
+            "name": "cephalo_web_search",
+            "description": "Performs Google-style web search with an AI Quick Summary, organic web results, and social/discussion blocks (Reddit, YouTube, GitHub, X). Returns structured SERP data and optionally an interactive HTML Generative UI artifact.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural language search query.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of organic search results (default: 5).",
+                        "default": 5,
+                    },
+                    "include_social": {
+                        "type": "boolean",
+                        "description": "Whether to extract social & discussion blocks (Reddit, YouTube, GitHub). Default is True.",
+                        "default": True,
+                    },
+                    "html_ui": {
+                        "type": "boolean",
+                        "description": "If true, generates a self-contained Google-style HTML generative UI widget artifact.",
+                        "default": False,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "cephalo_web_fetch",
+            "description": "Extracts clean readable markdown/text from a webpage URL (supports static and dynamic Chromium SPA rendering).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Target webpage URL to crawl.",
+                    },
+                    "dynamic": {
+                        "type": "boolean",
+                        "description": "Render JavaScript dynamic SPAs with Playwright Chromium.",
+                        "default": False,
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Maximum characters to extract (default: 15000).",
+                        "default": 15000,
+                    },
+                },
+                "required": ["url"],
+            },
+        },
     ]
 
 
@@ -351,6 +414,33 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
                 "action": "researched",
                 "research": synth,
             }
+
+        elif name == "cephalo_web_search":
+            from web_search import WebSearchEngine
+            engine = WebSearchEngine()
+            query = arguments.get("query", "")
+            limit = arguments.get("limit", 5)
+            include_social = arguments.get("include_social", True)
+            html_ui = arguments.get("html_ui", False)
+
+            serp = engine.search_serp(query=query, max_results=limit, include_social=include_social)
+            res = serp.to_dict()
+            if html_ui:
+                import re
+                slug = re.sub(r'[^a-z0-9]+', '-', query.lower()).strip('-')[:40] or "search"
+                out_path = SCRIPT_DIR / "data" / "serp_cache" / f"{slug}.html"
+                engine.render_serp_html(serp, output_path=out_path, standalone=True)
+                res["html_file"] = str(out_path)
+            return res
+
+        elif name == "cephalo_web_fetch":
+            from web_search import WebSearchEngine
+            engine = WebSearchEngine()
+            url = arguments.get("url", "")
+            dynamic = arguments.get("dynamic", False)
+            max_chars = arguments.get("max_chars", 15000)
+            text = engine.fetch_url(url, max_chars=max_chars, dynamic=dynamic)
+            return {"url": url, "content": text}
 
         else:
             return {"error": f"Unknown tool: '{name}'"}

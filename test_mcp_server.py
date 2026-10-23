@@ -15,6 +15,7 @@ def test_mcp_protocol():
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
+        errors="replace",
     )
 
     # 1. Test initialize
@@ -40,11 +41,32 @@ def test_mcp_protocol():
     assert "cephalo_get_profile" in tool_names
     assert "cephalo_continuous_learn" in tool_names
     assert "cephalo_deep_research" in tool_names
+    assert "cephalo_web_search" in tool_names
+    assert "cephalo_web_fetch" in tool_names
 
-    # 3. Test tools/call cephalo_learning_status
-    call_req = {
+    # 3. Test tools/call cephalo_web_search
+    web_call_req = {
         "jsonrpc": "2.0",
         "id": 3,
+        "method": "tools/call",
+        "params": {
+            "name": "cephalo_web_search",
+            "arguments": {"query": "FastAPI python", "limit": 2},
+        },
+    }
+    proc.stdin.write(json.dumps(web_call_req) + "\n")
+    proc.stdin.flush()
+    line = proc.stdout.readline()
+    web_res = json.loads(line)
+    assert web_res["id"] == 3
+    web_data = json.loads(web_res["result"]["content"][0]["text"])
+    assert "quick_summary" in web_data
+    assert "organic_results" in web_data
+
+    # 4. Test tools/call cephalo_learning_status
+    call_req = {
+        "jsonrpc": "2.0",
+        "id": 4,
         "method": "tools/call",
         "params": {
             "name": "cephalo_learning_status",
@@ -55,7 +77,7 @@ def test_mcp_protocol():
     proc.stdin.flush()
     line = proc.stdout.readline()
     call_res = json.loads(line)
-    assert call_res["id"] == 3
+    assert call_res["id"] == 4
     content_text = call_res["result"]["content"][0]["text"]
     data = json.loads(content_text)
     assert data["status"] == "success"
