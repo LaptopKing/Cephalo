@@ -767,6 +767,88 @@ class WebSearchEngine:
             output_path.write_text(html_content, encoding="utf-8")
         return html_content
 
+    def is_youtube_url(self, url: str) -> bool:
+        """Determines whether a URL or string refers to a YouTube video."""
+        if not url:
+            return False
+        return bool(re.search(r'(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/|^[a-zA-Z0-9_-]{11}$)', url))
+
+    def fetch_youtube_transcript(
+        self,
+        video_url_or_id: str,
+        languages: Optional[List[str]] = None,
+        max_chars: int = 40000,
+    ) -> Dict[str, Any]:
+        """Fetches and formats a clean transcript from a YouTube video."""
+        vid_match = re.search(r'(?:v=|\/v\/|youtu\.be\/|\/embed\/|\/shorts\/)([a-zA-Z0-9_-]{11})', video_url_or_id)
+        video_id = vid_match.group(1) if vid_match else video_url_or_id.strip()
+
+        if len(video_id) != 11:
+            raise ValueError(f"Invalid YouTube video identifier: '{video_url_or_id}'")
+
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+        except ImportError:
+            raise RuntimeError("youtube-transcript-api is not installed. Run 'pip install youtube-transcript-api'")
+
+        langs = languages or ["en", "hu"]
+        ytt = YouTubeTranscriptApi()
+        transcript_list = ytt.list(video_id)
+
+        # 1. Try finding preferred languages
+        transcript = None
+        try:
+            transcript = transcript_list.find_transcript(langs)
+        except Exception:
+            # 2. Fall back to first available transcript
+            try:
+                for t in transcript_list:
+                    transcript = t
+                    break
+            except Exception:
+                pass
+
+        if not transcript:
+            raise RuntimeError(f"No transcripts found for YouTube video {video_id}")
+
+        fetched = transcript.fetch()
+        paragraphs = []
+        current_chunk = []
+        current_len = 0
+
+        for snippet in fetched:
+            text = snippet.text.strip()
+            # Remove music/sound notations like [Music], [♪♪♪], (Applause)
+            text = re.sub(r'\[(?:Music|Applause|♪+)[^\]]*\]', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'\((?:Music|Applause|♪+)[^\)]*\)', '', text, flags=re.IGNORECASE).strip()
+            if not text:
+                continue
+
+            current_chunk.append(text)
+            current_len += len(text)
+
+            # Group every ~300 chars into coherent paragraphs
+            if current_len >= 300 or text.endswith(('.', '!', '?')):
+                paragraphs.append(" ".join(current_chunk))
+                current_chunk = []
+                current_len = 0
+
+        if current_chunk:
+            paragraphs.append(" ".join(current_chunk))
+
+        full_text = "\n\n".join(paragraphs)
+        if len(full_text) > max_chars:
+            full_text = full_text[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
+
+        return {
+            "video_id": video_id,
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "language": transcript.language,
+            "language_code": transcript.language_code,
+            "is_generated": transcript.is_generated,
+            "content": full_text,
+        }
+
     def fetch_url(
         self,
         target_url: str,
@@ -776,6 +858,13 @@ class WebSearchEngine:
         persistent: bool = False,
     ) -> str:
         """Fetches a URL and returns clean readable markdown/text content."""
+        if self.is_youtube_url(target_url):
+            try:
+                yt_res = self.fetch_youtube_transcript(target_url, max_chars=max_chars)
+                return f"[YouTube Transcript - {yt_res['url']} ({yt_res['language']})]\n\n{yt_res['content']}"
+            except Exception as e:
+                logger.warning("YouTube transcript fetch failed (%s), falling back to standard fetch", e)
+
         if dynamic:
             return self.fetch_dynamic(
                 target_url=target_url,

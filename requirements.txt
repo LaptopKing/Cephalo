@@ -19,6 +19,7 @@ huggingface-hub==1.33.0
 # --- Dynamic Web Crawler & Chromium Browser Engine ---
 # Playwright-powered headless or persistent browser for JavaScript SPAs & web research
 playwright>=1.40.0
+youtube-transcript-api>=1.2.0
 
 # --- Automated Privacy & Sanitization Layer ---
 # Detects and redacts PII before embedding or storage

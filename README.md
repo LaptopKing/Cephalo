@@ -11,6 +11,7 @@
   [![Embeddings: FastEmbed](https://img.shields.io/badge/Embeddings-FastEmbed%20ONNX-orange.svg)](https://github.com/qdrant/fastembed)
   [![Browser: Chromium](https://img.shields.io/badge/Crawler-Playwright%20Chromium-red.svg)](https://playwright.dev)
   [![Privacy: Zero--Leak](https://img.shields.io/badge/Privacy-Zero--Leak%20Local-red.svg)](#3-zero-leak-privacy-shield)
+  [![DeepWiki](https://img.shields.io/badge/DeepWiki-Docs%20%26%20Architecture-6f42c1.svg?logo=gitbook&logoColor=white)](https://deepwiki.com/LaptopKing/Cephalo)
   [![Development: Purely AI-Written](https://img.shields.io/badge/Written%20by-Autonomous%20AI-blueviolet.svg)](#1-overview)
   [![Status: Battle--Tested Daily](https://img.shields.io/badge/Status-Daily%20Personal%20Use-success.svg)](#1-overview)
 </div>
@@ -83,11 +84,55 @@ cephalo status
 # Ingest memory (automatically sanitized, embedded, and stored)
 cephalo record "We decided to use PostgreSQL for transactional data and LanceDB for vector search" --category "tech_stack"
 
+# Unix pipe directly into sanitized memory
+git diff | cephalo record --category "git_changes"
+
+# Ingest directly from Windows system clipboard
+cephalo record --clip --category "quick_note"
+
 # Query Cephalo using hybrid search (Dense semantic + BM25 keyword matching)
 cephalo search "What database do we use for vectors?"
 
-# Output clean machine-readable JSON for AI agent integration
-cephalo search "database choices" --json --limit 3
+# Copy search results directly to Windows clipboard
+cephalo search "database choices" --copy
+```
+
+### Cognitive Patterns ("Reflexes")
+Execute structured, version-controlled execution prompts with auto-injected Cephalo context:
+```bash
+# 1. List available patterns (core and custom)
+cephalo pattern list
+
+# 2. Audit code against Linux kernel & Matt Pocock engineering discipline
+cat brain.py | cephalo pattern run review_code
+
+# 3. Extract core ideas, quotes, and wisdom from clipboard text
+cephalo pattern run extract_wisdom --clip --copy
+```
+
+### YouTube Transcripts & Media Intake
+```bash
+# Extract transcript, apply cognitive pattern, and copy to clipboard
+cephalo youtube "https://www.youtube.com/watch?v=VIDEO_ID" --pattern extract_wisdom --copy
+
+# Extract AND immediately sanitize and index findings into LanceDB
+cephalo youtube "https://www.youtube.com/watch?v=VIDEO_ID" --record --category "video_research"
+```
+
+### Dynamic Context Assembler
+```bash
+# Assemble and copy consolidated prompt context (identity + hardware constraints + project specialty)
+cephalo context export --project "backend" --specialty "redis-caching" --copy
+```
+
+### Sovereign DeepWiki Engine
+Generate offline, publication-grade codebase documentation and interactive architecture codemaps:
+```bash
+# 1. Inspect codebase AST and generate Markdown wiki in docs/wiki/
+cephalo wiki generate
+
+# 2. Serve the interactive DeepWiki locally on 127.0.0.1:7433
+cephalo wiki serve
 ```
 
 ### Live Web Research & Dynamic Chromium Crawling

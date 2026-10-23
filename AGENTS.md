@@ -85,6 +85,21 @@ cephalo profile
 # List or create specialties:
 cephalo specialty list
 cephalo specialty auto-create "fastapi"
+
+# Cognitive execution patterns (Reflexes):
+cephalo pattern list
+cephalo pattern run review_code --clip --copy
+cephalo pattern run extract_wisdom "text"
+
+# YouTube video transcript extraction & pattern synthesis:
+cephalo youtube "https://youtube.com/watch?v=..." --pattern extract_wisdom --copy
+
+# Dynamic context assembler (User Profile + Hardware + Specialty):
+cephalo context export --project "backend" --specialty "redis-caching" --copy
+
+# Sovereign DeepWiki Engine (offline docs & architecture codemap):
+cephalo wiki generate
+cephalo wiki serve
 ```
 
 ---

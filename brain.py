@@ -55,6 +55,12 @@ def cmd_profile(args) -> None:
         return
 
     content = PROFILE_FILE.read_text(encoding="utf-8")
+    if getattr(args, "copy", False):
+        from clipboard_utils import set_clipboard_text
+        set_clipboard_text(content)
+        if not args.json:
+            print("[+] Profile copied to clipboard.")
+
     if args.json:
         print(json.dumps({"profile_path": str(PROFILE_FILE), "content": content}, indent=2, ensure_ascii=False))
     else:
@@ -127,13 +133,34 @@ def cmd_status(args) -> None:
 
 def cmd_search(args) -> None:
     """Performs hybrid, vector, or keyword search across LanceDB."""
+    query = getattr(args, "query", None)
+    if not query or query == "-":
+        if not sys.stdin.isatty():
+            query = sys.stdin.read().strip()
+    if not query:
+        print("Error: No search query provided. Provide query as argument or pipe via stdin.")
+        sys.exit(1)
+
     pipeline = get_pipeline(table_name=args.table)
     results = pipeline.search(
-        raw_query=args.query,
+        raw_query=query,
         query_type=args.type,
         where=args.where,
         limit=args.limit,
     )
+
+    if getattr(args, "copy", False):
+        from clipboard_utils import set_clipboard_text
+        if args.json:
+            clean_results = [{k: v for k, v in r.items() if k != "vector"} for r in results]
+            set_clipboard_text(json.dumps(clean_results, indent=2, ensure_ascii=False))
+        else:
+            text_lines = [f"Cephalo Search Results for '{query}':"]
+            for rank, res in enumerate(results, 1):
+                text_lines.append(f"#{rank} [{res.get('category', 'general')}]: {res.get('content', '')}")
+            set_clipboard_text("\n\n".join(text_lines))
+        if not args.json:
+            print("[+] Search results copied to clipboard.")
 
     if args.json:
         # Strip internal pyarrow formats if any for clean JSON serialization
@@ -173,9 +200,30 @@ def cmd_search(args) -> None:
 
 def cmd_record(args) -> None:
     """Sanitizes, embeds, and records a new prompt/decision into LanceDB and prompts.jsonl."""
+    raw_text = getattr(args, "text", None)
+
+    # 1. Clipboard flag
+    if getattr(args, "clip", False):
+        from clipboard_utils import get_clipboard_text
+        clip_content = get_clipboard_text()
+        if clip_content:
+            raw_text = clip_content
+        else:
+            print("Error: System clipboard is empty.")
+            sys.exit(1)
+
+    # 2. stdin streaming if empty or '-'
+    if not raw_text or raw_text == "-":
+        if not sys.stdin.isatty():
+            raw_text = sys.stdin.read().strip()
+
+    if not raw_text:
+        print("Error: No text provided. Provide text as argument, pipe via stdin ('cat file | cephalo record'), or use --clip.")
+        sys.exit(1)
+
     pipeline = get_pipeline(table_name=args.table)
     record = pipeline.ingest_prompt(
-        raw_text=args.text,
+        raw_text=raw_text,
         category=args.category,
         source=args.source,
         intent=args.intent,
@@ -590,17 +638,23 @@ def cmd_web(args) -> None:
 
 
 def cmd_fetch(args) -> None:
-    """Fetches clean text from a URL (static or dynamic Chromium) and optionally records it."""
+    """Fetches clean text from a URL (static, dynamic Chromium, or YouTube) and optionally records it."""
     from web_search import WebSearchEngine
     engine = WebSearchEngine()
+    display_title = f"CEPHALO WEB FETCH: {args.url}"
     try:
-        page_text = engine.fetch_url(
-            args.url,
-            max_chars=args.max_chars,
-            dynamic=getattr(args, "dynamic", False),
-            headless=not getattr(args, "headed", False),
-            persistent=getattr(args, "persistent", False),
-        )
+        if getattr(args, "youtube", False) or engine.is_youtube_url(args.url):
+            yt_res = engine.fetch_youtube_transcript(args.url, max_chars=args.max_chars)
+            page_text = yt_res["content"]
+            display_title = f"CEPHALO YOUTUBE TRANSCRIPT: {yt_res['url']} ({yt_res['language']})"
+        else:
+            page_text = engine.fetch_url(
+                args.url,
+                max_chars=args.max_chars,
+                dynamic=getattr(args, "dynamic", False),
+                headless=not getattr(args, "headed", False),
+                persistent=getattr(args, "persistent", False),
+            )
     except Exception as e:
         if args.json:
             print(json.dumps({"error": str(e)}, indent=2))
@@ -608,11 +662,28 @@ def cmd_fetch(args) -> None:
             print(f"Error fetching URL: {e}")
         return
 
+    # Optional pattern transformation
+    pattern_name = getattr(args, "pattern", None)
+    if pattern_name and page_text:
+        try:
+            from patterns_manager import PatternsManager
+            pm = PatternsManager()
+            page_text = pm.assemble_prompt(pattern_name, page_text)
+            display_title += f" [Pattern: {pattern_name}]"
+        except Exception as pe:
+            print(f"Warning: Pattern assembly failed: {pe}")
+
+    if getattr(args, "copy", False) and page_text:
+        from clipboard_utils import set_clipboard_text
+        set_clipboard_text(page_text)
+        if not args.json:
+            print("[+] Content copied to clipboard.")
+
     if args.json:
         print(json.dumps({"url": args.url, "content": page_text}, indent=2, ensure_ascii=False))
     else:
         print("=" * 65)
-        print(f"  CEPHALO WEB FETCH: {args.url}")
+        print(f"  {display_title}")
         print("=" * 65)
         preview = page_text[:800] + ("\n... [Truncated for display]" if len(page_text) > 800 else "")
         print(preview)
@@ -751,6 +822,229 @@ def maybe_auto_learn() -> None:
         pass
 
 
+def cmd_pattern(args) -> None:
+    """Manages cognitive execution patterns ('Reflexes')."""
+    from patterns_manager import PatternsManager
+    pm = PatternsManager()
+    action = getattr(args, "pattern_action", None) or "list"
+
+    if action == "list":
+        items = pm.list_patterns()
+        if getattr(args, "copy", False):
+            from clipboard_utils import set_clipboard_text
+            set_clipboard_text(json.dumps(items, indent=2))
+            if not args.json:
+                print("[+] Pattern list copied to clipboard.")
+        if args.json:
+            print(json.dumps(items, indent=2, ensure_ascii=False))
+            return
+        print("=" * 65)
+        print("  CEPHALO COGNITIVE PATTERNS (REFLEXES)")
+        print("=" * 65)
+        for p in items:
+            tier_badge = "[CORE]" if p["tier"] == "core" else "[CUSTOM]"
+            print(f"  • {p['name']:<22} {tier_badge} {p['summary']}")
+        print("=" * 65)
+
+    elif action == "show":
+        p = pm.get_pattern(args.name)
+        if not p:
+            if args.json:
+                print(json.dumps({"error": f"Pattern '{args.name}' not found"}, indent=2))
+            else:
+                print(f"Error: Pattern '{args.name}' not found.")
+            return
+        if getattr(args, "copy", False):
+            from clipboard_utils import set_clipboard_text
+            set_clipboard_text(p["content"])
+            if not args.json:
+                print("[+] Pattern prompt copied to clipboard.")
+        if args.json:
+            print(json.dumps(p, indent=2, ensure_ascii=False))
+            return
+        print(p["content"])
+
+    elif action == "run":
+        input_text = getattr(args, "text", None)
+        if getattr(args, "clip", False):
+            from clipboard_utils import get_clipboard_text
+            input_text = get_clipboard_text()
+        elif (not input_text or input_text == "-") and not sys.stdin.isatty():
+            input_text = sys.stdin.read().strip()
+
+        if not input_text:
+            print("Error: No input text provided. Pass text as argument, pipe via stdin ('cat file | cephalo pattern run <name>'), or use --clip.")
+            sys.exit(1)
+
+        context_text = None
+        if getattr(args, "context", None):
+            from context_manager import ContextManager
+            cm = ContextManager()
+            context_text = cm.export_context(specialty=args.context)
+
+        try:
+            full_prompt = pm.assemble_prompt(args.name, input_text, context_text=context_text)
+        except Exception as e:
+            print(f"Error assembling pattern: {e}")
+            sys.exit(1)
+
+        if getattr(args, "copy", False):
+            from clipboard_utils import set_clipboard_text
+            set_clipboard_text(full_prompt)
+            if not args.json:
+                print("[+] Assembled prompt copied to clipboard.")
+
+        if getattr(args, "record", False):
+            pipeline = get_pipeline(table_name=args.table)
+            rec = pipeline.record(
+                text=full_prompt,
+                category=args.category,
+                source="pattern_run",
+                intent=f"Executed pattern {args.name}",
+            )
+            if not args.json:
+                print(f"[+] Pattern output sanitized & indexed into LanceDB [{rec.get('id')}].")
+
+        if args.json:
+            print(json.dumps({
+                "pattern": args.name,
+                "input_length": len(input_text),
+                "prompt": full_prompt,
+            }, indent=2, ensure_ascii=False))
+        else:
+            print(full_prompt)
+
+
+def cmd_context(args) -> None:
+    """Exports structured context blocks for external LLMs or agents."""
+    from context_manager import ContextManager
+    cm = ContextManager()
+    action = getattr(args, "context_action", None) or "export"
+
+    if action == "export":
+        payload = cm.export_context(
+            project=getattr(args, "project", None),
+            specialty=getattr(args, "specialty", None),
+            include_hardware=not getattr(args, "no_hardware", False),
+            include_cinema=getattr(args, "cinema", False),
+        )
+        if getattr(args, "copy", False):
+            from clipboard_utils import set_clipboard_text
+            set_clipboard_text(payload)
+            if not args.json:
+                print("[+] Context payload copied to clipboard.")
+
+        if args.json:
+            print(json.dumps({"context": payload}, indent=2, ensure_ascii=False))
+        else:
+            print(payload)
+
+
+def cmd_wiki(args) -> None:
+    """Manages the sovereign local DeepWiki engine."""
+    from wiki_generator import WikiGenerator
+    wg = WikiGenerator()
+    action = getattr(args, "wiki_action", None) or "generate"
+
+    if action == "generate":
+        files = wg.generate_all()
+        if getattr(args, "copy", False):
+            from clipboard_utils import set_clipboard_text
+            summary_text = "\n".join([f"- {f.name}" for f in files])
+            set_clipboard_text(summary_text)
+            if not args.json:
+                print("[+] Wiki file list copied to clipboard.")
+
+        if args.json:
+            print(json.dumps({
+                "status": "success",
+                "output_dir": str(wg.output_dir),
+                "generated_files": [f.name for f in files],
+            }, indent=2))
+        else:
+            print("=" * 65)
+            print("  CEPHALO SOVEREIGN DEEPWIKI GENERATED")
+            print("=" * 65)
+            print(f"Output Directory: {wg.output_dir}")
+            for f in files:
+                print(f"  • {f.name:<24} ({f.stat().st_size:,} bytes)")
+            print("=" * 65)
+            print("[+] Open docs/wiki/README.md or run 'cephalo wiki serve' to view.")
+
+    elif action == "serve":
+        import http.server
+        import socketserver
+        import webbrowser
+        port = getattr(args, "port", 7433)
+        wiki_dir = wg.output_dir
+
+        class WikiHandler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *a, **kw):
+                super().__init__(*a, directory=str(wiki_dir), **kw)
+
+        print(f"[+] Serving Cephalo DeepWiki at http://127.0.0.1:{port}/")
+        if getattr(args, "open", True):
+            webbrowser.open(f"http://127.0.0.1:{port}/README.md")
+        with socketserver.TCPServer(("127.0.0.1", port), WikiHandler) as httpd:
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                print("\n[+] DeepWiki server stopped.")
+
+
+def cmd_youtube(args) -> None:
+    """Extracts a YouTube video transcript directly, with optional pattern and indexing."""
+    from web_search import WebSearchEngine
+    engine = WebSearchEngine()
+    try:
+        yt_res = engine.fetch_youtube_transcript(args.url)
+        content = yt_res["content"]
+    except Exception as e:
+        if args.json:
+            print(json.dumps({"error": str(e)}, indent=2))
+        else:
+            print(f"Error extracting YouTube transcript: {e}")
+        return
+
+    pattern_name = getattr(args, "pattern", None)
+    if pattern_name:
+        try:
+            from patterns_manager import PatternsManager
+            pm = PatternsManager()
+            content = pm.assemble_prompt(pattern_name, content)
+        except Exception as pe:
+            print(f"Warning: Pattern assembly failed: {pe}")
+
+    if getattr(args, "copy", False):
+        from clipboard_utils import set_clipboard_text
+        set_clipboard_text(content)
+        if not args.json:
+            print("[+] YouTube transcript copied to clipboard.")
+
+    if args.json:
+        out = dict(yt_res)
+        out["content"] = content
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+    else:
+        print("=" * 65)
+        print(f"  CEPHALO YOUTUBE TRANSCRIPT: {yt_res['url']} ({yt_res['language']})")
+        print("=" * 65)
+        preview = content[:800] + ("\n... [Truncated for display]" if len(content) > 800 else "")
+        print(preview)
+        print("=" * 65)
+
+    if getattr(args, "record", False) and content:
+        pipeline = get_pipeline(table_name=args.table)
+        rec = pipeline.record(
+            text=f"YouTube Transcript ({yt_res['url']}):\n\n{content}",
+            category=args.category,
+            source="youtube",
+            intent=f"Ingested {yt_res['url']}",
+        )
+        if not args.json:
+            print(f"[+] Transcript sanitized & indexed into LanceDB [{rec.get('id')}].")
+
+
 def main():
     maybe_auto_learn()
 
@@ -758,6 +1052,7 @@ def main():
     shared_parser = argparse.ArgumentParser(add_help=False)
     shared_parser.add_argument("--json", action="store_true", help="Output results in machine-readable JSON format for agents.")
     shared_parser.add_argument("--table", type=str, default=None, help="LanceDB table name override.")
+    shared_parser.add_argument("--copy", "-c", action="store_true", help="Copy command output directly to system clipboard.")
 
     parser = argparse.ArgumentParser(
         description="Cephalo - Agent & User Memory CLI",
@@ -775,14 +1070,15 @@ def main():
 
     # Search
     search_p = subparsers.add_parser("search", parents=[shared_parser], help="Search memory using hybrid, vector, or keyword matching.")
-    search_p.add_argument("query", type=str, help="Search query string.")
+    search_p.add_argument("query", nargs="?", default=None, help="Search query string (or pipe via stdin).")
     search_p.add_argument("--type", choices=["hybrid", "vector", "fts"], default="hybrid", help="Search mode.")
     search_p.add_argument("--where", type=str, default=None, help="SQL filter expression.")
     search_p.add_argument("--limit", type=int, default=3, help="Max results to return (default: 3).")
 
     # Record
     rec_p = subparsers.add_parser("record", parents=[shared_parser], help="Sanitize, embed, and store a prompt or memory.")
-    rec_p.add_argument("text", type=str, help="Content to record.")
+    rec_p.add_argument("text", nargs="?", default=None, help="Content to record (or pipe via stdin).")
+    rec_p.add_argument("--clip", action="store_true", help="Record text directly from system clipboard.")
     rec_p.add_argument("--category", type=str, default="general", help="Category label.")
     rec_p.add_argument("--source", type=str, default="agent", help="Source identifier.")
     rec_p.add_argument("--intent", type=str, default="", help="Extracted intent.")
@@ -884,14 +1180,60 @@ def main():
     web_p.add_argument("--no-social", action="store_true", help="Exclude social and discussion blocks.")
 
     # Web Fetch
-    fetch_p = subparsers.add_parser("fetch", parents=[shared_parser], help="Extract clean readable text from a URL (supports static and dynamic Chromium) and optionally record it.")
-    fetch_p.add_argument("url", type=str, help="Target webpage URL.")
+    fetch_p = subparsers.add_parser("fetch", parents=[shared_parser], help="Extract clean readable text from a URL (supports static, dynamic Chromium, and YouTube) and optionally record it.")
+    fetch_p.add_argument("url", type=str, help="Target webpage or YouTube URL.")
+    fetch_p.add_argument("--youtube", "-y", action="store_true", help="Extract YouTube video transcript directly.")
+    fetch_p.add_argument("--pattern", "-p", type=str, default=None, help="Apply cognitive pattern template (e.g. extract_wisdom).")
     fetch_p.add_argument("--dynamic", action="store_true", help="Render JavaScript dynamic SPAs using Playwright Chromium.")
     fetch_p.add_argument("--headed", action="store_true", help="Launch visible Chromium browser window instead of headless.")
     fetch_p.add_argument("--persistent", action="store_true", help="Use persistent browser profile in data/chromium_profile (preserves cookies/sessions).")
     fetch_p.add_argument("--max-chars", type=int, default=25000, help="Maximum characters to extract.")
     fetch_p.add_argument("--record", action="store_true", help="Automatically sanitize and index content into LanceDB.")
     fetch_p.add_argument("--category", type=str, default="web_research", help="Category for recorded memory.")
+
+    # Pattern (Cognitive Reflexes)
+    pat_p = subparsers.add_parser("pattern", parents=[shared_parser], help="Run and manage modular cognitive execution patterns.")
+    pat_sub = pat_p.add_subparsers(dest="pattern_action", help="Pattern action")
+
+    # pattern list
+    pat_sub.add_parser("list", parents=[shared_parser], help="List all available patterns.")
+
+    # pattern show
+    pat_show_p = pat_sub.add_parser("show", parents=[shared_parser], help="Show the prompt template of a pattern.")
+    pat_show_p.add_argument("name", type=str, help="Pattern name (e.g. extract_wisdom, review_code).")
+
+    # pattern run
+    pat_run_p = pat_sub.add_parser("run", parents=[shared_parser], help="Execute a pattern on text, clipboard, or stdin.")
+    pat_run_p.add_argument("name", type=str, help="Pattern name to execute.")
+    pat_run_p.add_argument("text", nargs="?", default=None, help="Input text to process (or pipe via stdin).")
+    pat_run_p.add_argument("--clip", action="store_true", help="Read input directly from system clipboard.")
+    pat_run_p.add_argument("--context", "-C", type=str, default=None, help="Inject domain specialty context.")
+    pat_run_p.add_argument("--record", action="store_true", help="Automatically record and index pattern output in LanceDB.")
+    pat_run_p.add_argument("--category", type=str, default="pattern_run", help="Category for recorded memory.")
+
+    # Context (Dynamic Assembler)
+    ctx_p = subparsers.add_parser("context", parents=[shared_parser], help="Assemble and export consolidated context for external LLMs.")
+    ctx_sub = ctx_p.add_subparsers(dest="context_action", help="Context action")
+    ctx_exp_p = ctx_sub.add_parser("export", parents=[shared_parser], help="Export consolidated context markdown.")
+    ctx_exp_p.add_argument("--project", type=str, default=None, help="Target project.")
+    ctx_exp_p.add_argument("--specialty", "-s", type=str, default=None, help="Domain specialty to include.")
+    ctx_exp_p.add_argument("--no-hardware", action="store_true", help="Exclude hardware profile.")
+    ctx_exp_p.add_argument("--cinema", action="store_true", help="Include cinema & entertainment aesthetic preferences.")
+
+    # Wiki (Sovereign DeepWiki Engine)
+    wiki_p = subparsers.add_parser("wiki", parents=[shared_parser], help="Sovereign codebase DeepWiki & codemap engine.")
+    wiki_sub = wiki_p.add_subparsers(dest="wiki_action", help="Wiki action")
+    wiki_sub.add_parser("generate", parents=[shared_parser], help="Generate offline Markdown documentation with Mermaid charts.")
+    wiki_serve_p = wiki_sub.add_parser("serve", parents=[shared_parser], help="Serve generated DeepWiki on local HTTP server.")
+    wiki_serve_p.add_argument("--port", type=int, default=7433, help="Port to serve on (default: 7433).")
+    wiki_serve_p.add_argument("--no-open", dest="open", action="store_false", help="Do not automatically open browser.")
+
+    # YouTube (Standalone Direct Ingestor)
+    yt_p = subparsers.add_parser("youtube", parents=[shared_parser], help="Extract transcripts directly from YouTube videos.")
+    yt_p.add_argument("url", type=str, help="YouTube video URL or 11-character video ID.")
+    yt_p.add_argument("--pattern", "-p", type=str, default=None, help="Apply cognitive pattern template (e.g. extract_wisdom).")
+    yt_p.add_argument("--record", action="store_true", help="Automatically record and index transcript in LanceDB.")
+    yt_p.add_argument("--category", type=str, default="youtube", help="Category for recorded memory.")
 
     # Learn (Continuous Learning)
     learn_p = subparsers.add_parser("learn", parents=[shared_parser], help="Autonomous continuous learning across codebases, manifests, and memory.")
@@ -952,6 +1294,14 @@ def main():
         cmd_web(args)
     elif args.command == "fetch":
         cmd_fetch(args)
+    elif args.command == "pattern":
+        cmd_pattern(args)
+    elif args.command == "context":
+        cmd_context(args)
+    elif args.command == "wiki":
+        cmd_wiki(args)
+    elif args.command == "youtube":
+        cmd_youtube(args)
     else:
         parser.print_help()
 
