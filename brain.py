@@ -205,6 +205,59 @@ def cmd_search(args) -> None:
         print(f"      {preview}")
     print("-" * 70)
 
+def cmd_def(args) -> None:
+    """Token-efficient AST symbol search across workspace projects (inspired by XERJ 'def')."""
+    symbol = getattr(args, "symbol", None)
+    if not symbol or symbol == "-":
+        if not sys.stdin.isatty():
+            symbol = sys.stdin.read().strip()
+    if not symbol:
+        print("Error: No symbol provided. Specify a symbol name (e.g. cephalo def search).")
+        sys.exit(1)
+
+    target_path = Path(args.path) if getattr(args, "path", None) else None
+    from symbol_extractor import CodeSymbolIndexer
+    indexer = CodeSymbolIndexer(root_dir=target_path)
+
+    results = indexer.find_definitions(
+        symbol_name=symbol,
+        target_dir=target_path,
+        exact=getattr(args, "exact", False),
+        max_results=getattr(args, "limit", 20),
+    )
+
+    if getattr(args, "copy", False):
+        from clipboard_utils import set_clipboard_text
+        if args.json:
+            set_clipboard_text(json.dumps([r.to_dict() for r in results], indent=2, ensure_ascii=False))
+        else:
+            set_clipboard_text("\n\n".join([r.to_markdown(base_dir=indexer.root_dir) for r in results]))
+        if not args.json:
+            print("[+] Symbol definitions copied to clipboard.")
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "query": symbol,
+            "exact": getattr(args, "exact", False),
+            "target": str(indexer.root_dir),
+            "count": len(results),
+            "definitions": [r.to_dict() for r in results],
+        }, indent=2, ensure_ascii=False))
+        sys.stdout.flush()
+        return
+
+    print(f"\nCephalo AST Symbol Search: '{symbol}' (Matches: {len(results)})")
+    if target_path:
+        print(f"Target Path:    {target_path}")
+    print("-" * 70)
+    if not results:
+        print(f"No symbol definitions matching '{symbol}' found.")
+    else:
+        for r in results:
+            print(r.to_markdown(base_dir=indexer.root_dir))
+    print("-" * 70)
+    sys.stdout.flush()
+
 
 def cmd_record(args) -> None:
     """Sanitizes, embeds, and records a new prompt/decision into LanceDB and prompts.jsonl."""
@@ -1131,6 +1184,13 @@ def main():
     search_p.add_argument("--tag", type=str, default=None, help="Filter results by tag (e.g. #cinema/hdr or cinema).")
     search_p.add_argument("--all", "--include-deprecated", dest="include_deprecated", action="store_true", help="Include superseded/deprecated memories in search results.")
 
+    # AST Code Definition Search (inspired by XERJ)
+    def_p = subparsers.add_parser("def", parents=[shared_parser], help="AST code symbol and definition search across workspace projects.")
+    def_p.add_argument("symbol", nargs="?", default=None, help="Symbol name to search for (function, class, interface, type, struct).")
+    def_p.add_argument("--path", "-p", type=str, default=None, help="Root directory or file to search (default: current workspace).")
+    def_p.add_argument("--exact", "-e", action="store_true", help="Match exact symbol name rather than substring.")
+    def_p.add_argument("--limit", "-n", type=int, default=20, help="Maximum number of matches to return (default: 20).")
+
     # Record
     rec_p = subparsers.add_parser("record", parents=[shared_parser], help="Sanitize, embed, and store a prompt or memory.")
     rec_p.add_argument("text", nargs="?", default=None, help="Content to record (or pipe via stdin).")
@@ -1347,6 +1407,8 @@ def main():
         cmd_profile(args)
     elif args.command == "search":
         cmd_search(args)
+    elif args.command == "def":
+        cmd_def(args)
     elif args.command == "record":
         cmd_record(args)
     elif args.command == "sync":
