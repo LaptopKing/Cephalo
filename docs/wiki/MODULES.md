@@ -22,7 +22,7 @@ Universal lifecycle processor for agent harnesses (Google Antigravity, Claude Co
 ---
 
 ## [`brain.py`](brain.py)
-**Lines of Code:** 1387 | **Imports:** 9
+**Lines of Code:** 1449 | **Imports:** 9
 
 > Cephalo - Unified Agent & User Memory Interface (brain.py)
 ==========================================================
@@ -37,10 +37,10 @@ Universal CLI entrypoint for humans and AI agents (Antigravity, Claude Code, Cod
 - `def cmd_profile(args)` — *Reads or updates USER_PROFILE.md.*
 - `def cmd_status(args)` — *Prints system health, LanceDB table status, and prompt counts.*
 - `def cmd_search(args)` — *Performs hybrid, vector, or keyword search across LanceDB.*
+- `def cmd_def(args)` — *Token-efficient AST symbol search across workspace projects (inspired by XERJ 'def').*
 - `def cmd_record(args)` — *Sanitizes, embeds, and records a new prompt/decision into LanceDB and prompts.jsonl.*
 - `def cmd_sync(args)` — *Syncs unindexed entries from prompts.jsonl into LanceDB.*
 - `def cmd_harvest(args)` — *Scans conversation transcripts and harvests preferences/critiques.*
-- `def cmd_specialty(args)` — *Handles CRUD operations for the Specialties domain layer.*
 
 ---
 
@@ -207,7 +207,7 @@ memory and user constraints.
 ---
 
 ## [`research_engine.py`](research_engine.py)
-**Lines of Code:** 467 | **Imports:** 13
+**Lines of Code:** 541 | **Imports:** 13
 
 > Cephalo Deep Research & Specialty Synthesis Engine (research_engine.py)
 ======================================================================
@@ -219,7 +219,7 @@ and craftsmanship standards for investigating topics and creating specialties.
   **Methods:** `to_dict()`
 - **`DeepResearchEngine`**
   *Executes multi-perspective investigation across web search, GitHub repositories,*
-  **Methods:** `__init__()`, `_query_github_repo_metadata()`, `search_curated_github_repos()`, `search_industry_best_practices()`, `decompose_subtopics()`, `synthesize_specialty()`
+  **Methods:** `__init__()`, `_query_github_repo_metadata()`, `search_curated_github_repos()`, `search_industry_best_practices()`, `mine_reference_patterns()`, `decompose_subtopics()`
 ### Key Functions
 - `def slugify(text)` — *Converts a string into a clean filesystem slug.*
 - `def main()` — **
@@ -352,7 +352,7 @@ Allows instant quick-capture from:
 ---
 
 ## [`wiki_generator.py`](wiki_generator.py)
-**Lines of Code:** 1416 | **Imports:** 9
+**Lines of Code:** 1512 | **Imports:** 9
 
 > Cephalo - Sovereign Codebase Wiki & Codemap Engine (wiki_generator.py)
 =====================================================================
