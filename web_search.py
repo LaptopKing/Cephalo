@@ -634,17 +634,28 @@ class WebSearchEngine:
         encoded_query = urllib.parse.quote_plus(query)
         url = f"https://html.duckduckgo.com/html/?q={encoded_query}"
 
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": self.USER_AGENT,
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-        )
+        html_content = ""
+        # 1. Prefer Scrapling Fetcher with TLS browser impersonation
+        if HAS_SCRAPLING:
+            try:
+                res = ScraplingFetcher.get(url, timeout=10)
+                if res.status in (200, 202) and res.html_content:
+                    html_content = res.html_content
+            except Exception as e:
+                logger.debug(f"Scrapling DuckDuckGo fetch error: {e}")
 
-        with urllib.request.urlopen(req, timeout=10) as response:
-            html_content = response.read().decode("utf-8", errors="ignore")
+        # 2. Fallback to standard urllib request
+        if not html_content:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": self.USER_AGENT,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                html_content = response.read().decode("utf-8", errors="ignore")
 
         # Split by individual result block
         parts = re.split(r'<div class="result results_links results_links_deep web-result ">', html_content)
