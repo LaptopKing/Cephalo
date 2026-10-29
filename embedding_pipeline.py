@@ -880,13 +880,6 @@ class EmbeddingPipeline:
             include_deprecated=include_deprecated,
         )
         return results
-            query_vector=query_vector,
-            query_text=clean_query,
-            query_type=query_type,
-            where=where,
-            limit=limit,
-        )
-        return results
 
 
 # ==============================================================================
