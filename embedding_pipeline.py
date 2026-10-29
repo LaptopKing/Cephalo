@@ -55,6 +55,21 @@ DATA_DIR = BASE_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
 DEFAULT_LANCEDB_DIR = DATA_DIR / "lancedb"
 
+TAG_REGEX = re.compile(r'(?<!\S)#([a-zA-Z][a-zA-Z0-9_\-\/]*)\b')
+
+
+def extract_tags(text: str) -> List[str]:
+    """Extracts inline #tags and hierarchical #tag/subtags from text (e.g. #cinema/hdr, #backend)."""
+    if not text:
+        return []
+    matches = TAG_REGEX.findall(text)
+    tags: List[str] = []
+    for m in matches:
+        clean = m.strip("/").lower()
+        if clean and clean not in tags:
+            tags.append(clean)
+    return tags
+
 
 # ==============================================================================
 # 1. Sanitization Layer (Integrity & Security First)
