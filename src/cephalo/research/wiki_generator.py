@@ -23,9 +23,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-BASE_DIR = Path(__file__).resolve().parent
-DOCS_WIKI_DIR = BASE_DIR / "docs" / "wiki"
-DATA_DIR = BASE_DIR / "data"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = ROOT_DIR
+DOCS_WIKI_DIR = ROOT_DIR / "docs" / "wiki"
+DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
 DEFAULT_LANCEDB_DIR = DATA_DIR / "lancedb"
 

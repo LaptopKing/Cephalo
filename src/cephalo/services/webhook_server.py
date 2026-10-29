@@ -29,8 +29,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Base paths
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = ROOT_DIR
+DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
 DEFAULT_PORT = 7434
 DEFAULT_HOST = "127.0.0.1"
