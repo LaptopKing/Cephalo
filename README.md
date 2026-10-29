@@ -251,7 +251,7 @@ flowchart TD
         
         FastEmbed --> LanceDB[("LanceDB Local Store\n(Columnar Vector & BM25 FTS)")]
         
-        CLI --> WebCrawler["Web Search & Playwright Chromium Crawler\n(DuckDuckGo / Headless Chromium)"]
+        CLI --> WebCrawler["Adaptive Web Engine & Scraper\n(Scrapling / curl_cffi / Patchright)"]
         WebCrawler --> Sanitizer
         
         CLI --> Specialties["Specialties Manager\n(Project -> Specialties -> User Preferences)"]
@@ -263,7 +263,20 @@ flowchart TD
 
 ---
 
-## 10. License
+## 10. Acknowledgements & Open-Source Credits
+
+Cephalo stands on the shoulders of giants in the open-source community. Whenever we adopt architectures, libraries, or methodologies from external projects, we honor and credit them here:
+
+- **[Scrapling](https://github.com/D4Vinci/Scrapling)** by [@D4Vinci](https://github.com/D4Vinci) — Adaptive, high-performance Python web scraping framework providing TLS browser impersonation (`curl_cffi`), Patchright stealth Turnstile solving, and clean Markdown extraction.
+- **[LanceDB](https://github.com/lancedb/lancedb)** — Serverless, embedded columnar vector database powering Cephalo's local hybrid search (Dense Vector + BM25 FTS).
+- **[FastEmbed](https://github.com/qdrant/fastembed)** by Qdrant — Fast, lightweight ONNX runtime embedding engine for local multilingual Qwen models without heavy PyTorch dependencies.
+- **[Microsoft Presidio](https://github.com/microsoft/presidio)** — Privacy-preserving PII detection and automated contextual data anonymization layer.
+- **[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)** — Undetected automation framework eliminating CDP / Webdriver leak points for deep web research.
+- **[XERJ](https://github.com/xerj-org/xerj)** — High-velocity AI search engine and MCP server inspiring our reference coding and token efficiency principles.
+
+---
+
+## 11. License
 
 Released under the [MIT License](LICENSE).  
 Copyright (c) 2026 Peter. Open-source, local-first, and built for privacy.
