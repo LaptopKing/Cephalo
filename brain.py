@@ -67,8 +67,8 @@ def cmd_profile(args) -> None:
         print(content)
 
 
-def cmd_status(args) -> None:
-    """Prints system health, LanceDB table status, and prompt counts."""
+def get_system_status() -> Dict[str, Any]:
+    """Collects system health, LanceDB table stats, and prompt log counts as pure data."""
     # Count prompts.jsonl
     prompt_count = 0
     recent_prompts = []
@@ -99,7 +99,7 @@ def cmd_status(args) -> None:
         except Exception as e:
             table_stats["error"] = str(e)
 
-    status_data = {
+    return {
         "working_directory": str(BASE_DIR),
         "prompts_file": str(PROMPTS_FILE),
         "prompts_logged": prompt_count,
@@ -110,9 +110,18 @@ def cmd_status(args) -> None:
         "recent_prompts": recent_prompts,
     }
 
-    if args.json:
+
+def cmd_status(args) -> None:
+    """Prints system health, LanceDB table status, and prompt counts."""
+    status_data = get_system_status()
+
+    if getattr(args, "json", False):
         print(json.dumps(status_data, indent=2, ensure_ascii=False))
         return
+
+    prompt_count = status_data["prompts_logged"]
+    table_stats = status_data["lancedb_tables"]
+    recent_prompts = status_data["recent_prompts"]
 
     print("=" * 65)
     print("  CEPHALO (SECOND BRAIN) - STATUS")
@@ -131,15 +140,44 @@ def cmd_status(args) -> None:
     print("=" * 65)
 
 
+def resolve_cli_input(
+    args: Any,
+    field_name: str = "text",
+    allow_clip: bool = False,
+    allow_stdin: bool = True,
+    error_message: Optional[str] = None,
+) -> str:
+    """Consistently resolves CLI input from argument, clipboard (--clip), or piped stdin."""
+    val = getattr(args, field_name, None)
+
+    if allow_clip and getattr(args, "clip", False):
+        from clipboard_utils import get_clipboard_text
+        clip_content = get_clipboard_text()
+        if clip_content:
+            return clip_content
+        print("Error: System clipboard is empty.")
+        sys.exit(1)
+
+    if allow_stdin and (not val or val == "-"):
+        if not sys.stdin.isatty():
+            val = sys.stdin.read().strip()
+
+    if not val:
+        default_err = f"Error: No {field_name} provided. Provide via argument or pipe via stdin."
+        print(error_message or default_err)
+        sys.exit(1)
+
+    return val
+
+
 def cmd_search(args) -> None:
     """Performs hybrid, vector, or keyword search across LanceDB."""
-    query = getattr(args, "query", None)
-    if not query or query == "-":
-        if not sys.stdin.isatty():
-            query = sys.stdin.read().strip()
-    if not query:
-        print("Error: No search query provided. Provide query as argument or pipe via stdin.")
-        sys.exit(1)
+    query = resolve_cli_input(
+        args,
+        field_name="query",
+        allow_stdin=True,
+        error_message="Error: No search query provided. Provide query as argument or pipe via stdin.",
+    )
 
     tag = getattr(args, "tag", None)
     include_deprecated = getattr(args, "include_deprecated", False)
@@ -207,13 +245,12 @@ def cmd_search(args) -> None:
 
 def cmd_def(args) -> None:
     """Token-efficient AST symbol search across workspace projects (inspired by XERJ 'def')."""
-    symbol = getattr(args, "symbol", None)
-    if not symbol or symbol == "-":
-        if not sys.stdin.isatty():
-            symbol = sys.stdin.read().strip()
-    if not symbol:
-        print("Error: No symbol provided. Specify a symbol name (e.g. cephalo def search).")
-        sys.exit(1)
+    symbol = resolve_cli_input(
+        args,
+        field_name="symbol",
+        allow_stdin=True,
+        error_message="Error: No symbol provided. Specify a symbol name (e.g. cephalo def search).",
+    )
 
     target_path = Path(args.path) if getattr(args, "path", None) else None
     from symbol_extractor import CodeSymbolIndexer
@@ -261,26 +298,13 @@ def cmd_def(args) -> None:
 
 def cmd_record(args) -> None:
     """Sanitizes, embeds, and records a new prompt/decision into LanceDB and prompts.jsonl."""
-    raw_text = getattr(args, "text", None)
-
-    # 1. Clipboard flag
-    if getattr(args, "clip", False):
-        from clipboard_utils import get_clipboard_text
-        clip_content = get_clipboard_text()
-        if clip_content:
-            raw_text = clip_content
-        else:
-            print("Error: System clipboard is empty.")
-            sys.exit(1)
-
-    # 2. stdin streaming if empty or '-'
-    if not raw_text or raw_text == "-":
-        if not sys.stdin.isatty():
-            raw_text = sys.stdin.read().strip()
-
-    if not raw_text:
-        print("Error: No text provided. Provide text as argument, pipe via stdin ('cat file | cephalo record'), or use --clip.")
-        sys.exit(1)
+    raw_text = resolve_cli_input(
+        args,
+        field_name="text",
+        allow_clip=True,
+        allow_stdin=True,
+        error_message="Error: No text provided. Provide text as argument, pipe via stdin ('cat file | cephalo record'), or use --clip.",
+    )
 
     tags = getattr(args, "tags", None)
     supersedes = getattr(args, "supersedes", None)
@@ -1401,46 +1425,33 @@ def main():
 
     args = parser.parse_args()
 
-    if not args.command or args.command == "status":
+    COMMAND_HANDLERS = {
+        "status": cmd_status,
+        "profile": cmd_profile,
+        "search": cmd_search,
+        "def": cmd_def,
+        "record": cmd_record,
+        "sync": cmd_sync,
+        "harvest": cmd_harvest,
+        "specialty": cmd_specialty,
+        "research": cmd_research,
+        "learn": cmd_learn,
+        "webhook": cmd_webhook,
+        "mcp": cmd_mcp,
+        "daemon": cmd_daemon,
+        "email": cmd_email,
+        "web": cmd_web,
+        "fetch": cmd_fetch,
+        "pattern": cmd_pattern,
+        "context": cmd_context,
+        "wiki": cmd_wiki,
+        "youtube": cmd_youtube,
+    }
+
+    if not args.command:
         cmd_status(args)
-    elif args.command == "profile":
-        cmd_profile(args)
-    elif args.command == "search":
-        cmd_search(args)
-    elif args.command == "def":
-        cmd_def(args)
-    elif args.command == "record":
-        cmd_record(args)
-    elif args.command == "sync":
-        cmd_sync(args)
-    elif args.command == "harvest":
-        cmd_harvest(args)
-    elif args.command == "specialty":
-        cmd_specialty(args)
-    elif args.command == "research":
-        cmd_research(args)
-    elif args.command == "learn":
-        cmd_learn(args)
-    elif args.command == "webhook":
-        cmd_webhook(args)
-    elif args.command == "mcp":
-        cmd_mcp(args)
-    elif args.command == "daemon":
-        cmd_daemon(args)
-    elif args.command == "email":
-        cmd_email(args)
-    elif args.command == "web":
-        cmd_web(args)
-    elif args.command == "fetch":
-        cmd_fetch(args)
-    elif args.command == "pattern":
-        cmd_pattern(args)
-    elif args.command == "context":
-        cmd_context(args)
-    elif args.command == "wiki":
-        cmd_wiki(args)
-    elif args.command == "youtube":
-        cmd_youtube(args)
+    elif args.command in COMMAND_HANDLERS:
+        COMMAND_HANDLERS[args.command](args)
     else:
         parser.print_help()
 
