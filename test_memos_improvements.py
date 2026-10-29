@@ -136,6 +136,10 @@ class TestWebhookQuickCapture(unittest.TestCase):
     """Tests Feature 2: Multi-Channel Quick Capture HTTP Webhook Gateway."""
 
     def test_webhook_ingest_and_health(self):
+        # Pre-warm pipeline so ONNX model is already in memory
+        from webhook_server import get_pipeline
+        get_pipeline()
+
         server = WebhookServer(host="127.0.0.1", port=7439)
         server.start(background=True)
         time.sleep(0.5)

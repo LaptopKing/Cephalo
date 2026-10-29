@@ -337,5 +337,5 @@ def send_quick_memory(text: str, category: str = "quick_note", host: str = DEFAU
     url = f"http://{host}:{port}/ingest"
     payload = json.dumps({"text": text, "category": category, "source": "cli_webhook"}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=5) as resp:
+    with urllib.request.urlopen(req, timeout=25) as resp:
         return json.loads(resp.read().decode("utf-8"))
