@@ -38,11 +38,12 @@ if sys.platform == "win32":
         pass
 
 # Base Paths
-SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR / "data"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = ROOT_DIR
+DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
 STATE_FILE = DATA_DIR / "harvest_state.json"
-PROFILE_FILE = SCRIPT_DIR / "USER_PROFILE.md"
+PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 LANCEDB_DIR = DATA_DIR / "lancedb"
 
 # Threshold for Qwen 1024d L2 distance (<= 1.22 indicates strong semantic relevance to personal knowledge)

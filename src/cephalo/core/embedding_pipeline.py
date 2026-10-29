@@ -50,8 +50,9 @@ logger = logging.getLogger("second_brain.pipeline")
 logging.getLogger("presidio-analyzer").setLevel(logging.ERROR)
 
 # Default Base Paths
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = ROOT_DIR
+DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
 DEFAULT_LANCEDB_DIR = DATA_DIR / "lancedb"
 

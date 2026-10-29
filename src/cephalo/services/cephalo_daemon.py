@@ -34,8 +34,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 # Base paths
-SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR / "data"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = ROOT_DIR
+DATA_DIR = ROOT_DIR / "data"
 PID_FILE = DATA_DIR / "cephalo_daemon.pid"
 DAEMON_STATUS_FILE = DATA_DIR / "cephalo_daemon_status.json"
 DAEMON_LOG_FILE = DATA_DIR / "daemon.log"

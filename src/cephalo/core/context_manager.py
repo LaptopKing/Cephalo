@@ -16,8 +16,9 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-BASE_DIR = Path(__file__).resolve().parent
-PROFILE_FILE = BASE_DIR / "USER_PROFILE.md"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = ROOT_DIR
+PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 
 logger = logging.getLogger("cephalo.context")
 

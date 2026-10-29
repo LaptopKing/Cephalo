@@ -54,12 +54,14 @@ logging.basicConfig(
 logger = logging.getLogger("cephalo.mcp")
 
 # Base paths
-SCRIPT_DIR = Path(__file__).resolve().parent
-PROFILE_FILE = SCRIPT_DIR / "USER_PROFILE.md"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = ROOT_DIR
+PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 
-# Add script directory to sys.path so modules can be imported directly
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+# Add root and src directory to sys.path so modules can be imported directly
+for p_dir in (str(ROOT_DIR), str(ROOT_DIR / "src")):
+    if p_dir not in sys.path:
+        sys.path.insert(0, p_dir)
 
 
 def get_tool_definitions() -> List[Dict[str, Any]]:

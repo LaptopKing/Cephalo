@@ -25,8 +25,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Base Paths
-BASE_DIR = Path(__file__).resolve().parent
-SPECIALTIES_DIR = BASE_DIR / "specialties"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = ROOT_DIR
+SPECIALTIES_DIR = ROOT_DIR / "specialties"
 SPECIALTIES_DIR.mkdir(parents=True, exist_ok=True)
 
 

@@ -19,9 +19,10 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-BASE_DIR = Path(__file__).resolve().parent
-CORE_PATTERNS_DIR = BASE_DIR / "patterns"
-DATA_DIR = BASE_DIR / "data"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+BASE_DIR = ROOT_DIR
+CORE_PATTERNS_DIR = ROOT_DIR / "patterns"
+DATA_DIR = ROOT_DIR / "data"
 CUSTOM_PATTERNS_DIR = DATA_DIR / "patterns"
 
 logger = logging.getLogger("cephalo.patterns")

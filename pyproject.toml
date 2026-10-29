@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cephalo"
+version = "2.1.0"
+description = "Sovereign Local Memory & Cognitive Coprocessor for AI Agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Cephalo Contributors" }
+]
+keywords = ["memory", "vector-search", "agent", "lancedb", "fastembed", "second-brain"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.scripts]
+cephalo = "cephalo.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

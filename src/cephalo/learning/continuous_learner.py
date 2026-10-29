@@ -35,13 +35,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Base paths
-SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR / "data"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = ROOT_DIR
+DATA_DIR = ROOT_DIR / "data"
 STATE_FILE = DATA_DIR / "continuous_learning_state.json"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
-PROFILE_FILE = SCRIPT_DIR / "USER_PROFILE.md"
-SPECIALTIES_DIR = SCRIPT_DIR / "specialties"
-DEFAULT_PROJECTS_DIR = SCRIPT_DIR.parent / "projects"
+PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
+SPECIALTIES_DIR = ROOT_DIR / "specialties"
+DEFAULT_PROJECTS_DIR = ROOT_DIR.parent / "projects"
 
 # Logging setup
 logging.basicConfig(
