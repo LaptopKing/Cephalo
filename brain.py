@@ -141,12 +141,17 @@ def cmd_search(args) -> None:
         print("Error: No search query provided. Provide query as argument or pipe via stdin.")
         sys.exit(1)
 
+    tag = getattr(args, "tag", None)
+    include_deprecated = getattr(args, "include_deprecated", False)
+
     pipeline = get_pipeline(table_name=args.table)
     results = pipeline.search(
         raw_query=query,
         query_type=args.type,
         where=args.where,
         limit=args.limit,
+        tag=tag,
+        include_deprecated=include_deprecated,
     )
 
     if getattr(args, "copy", False):
@@ -191,9 +196,12 @@ def cmd_search(args) -> None:
 
         pid = res.get("id", "N/A")
         cat = res.get("category", "general")
+        tags_str = (" " + " ".join([f"#{t}" for t in res.get("tags", [])])) if res.get("tags") else ""
+        dep_str = " [DEPRECATED]" if res.get("is_deprecated") else ""
+        super_str = f" [Supersedes {res['supersedes']}]" if res.get("supersedes") else ""
         content = res.get("content", "")
         preview = (content[:95] + "...") if len(content) > 95 else content
-        print(f"  #{rank} [{score_str}] [{pid}] ({cat})")
+        print(f"  #{rank} [{score_str}] [{pid}] ({cat}){tags_str}{dep_str}{super_str}")
         print(f"      {preview}")
     print("-" * 70)
 
@@ -221,12 +229,19 @@ def cmd_record(args) -> None:
         print("Error: No text provided. Provide text as argument, pipe via stdin ('cat file | cephalo record'), or use --clip.")
         sys.exit(1)
 
+    tags = getattr(args, "tags", None)
+    supersedes = getattr(args, "supersedes", None)
+    relates_to = getattr(args, "relates_to", None)
+
     pipeline = get_pipeline(table_name=args.table)
     record = pipeline.ingest_prompt(
         raw_text=raw_text,
         category=args.category,
         source=args.source,
         intent=args.intent,
+        tags=tags,
+        supersedes=supersedes,
+        relates_to=relates_to,
         sync_to_jsonl=True,
     )
 
@@ -236,10 +251,16 @@ def cmd_record(args) -> None:
         return
 
     print(f"[+] Memory Recorded & Indexed [{record['id']}]:")
-    print(f"    Category:  {record['category']}")
-    print(f"    Sanitized: {record['content']}")
-    print(f"    Model:     {record['embedding_model']} (dim={record['dimension']})")
-    print(f"    Table:     {pipeline.store.table_name}")
+    print(f"    Category:   {record['category']}")
+    if record.get("tags"):
+        print(f"    Tags:       {' '.join(['#' + t for t in record['tags']])}")
+    if record.get("supersedes"):
+        print(f"    Supersedes: {record['supersedes']}")
+    if record.get("relates_to"):
+        print(f"    Relates To: {', '.join(record['relates_to'])}")
+    print(f"    Sanitized:  {record['content']}")
+    print(f"    Model:      {record['embedding_model']} (dim={record['dimension']})")
+    print(f"    Table:      {pipeline.store.table_name}")
 
 
 def cmd_sync(args) -> None:
@@ -972,25 +993,58 @@ def cmd_wiki(args) -> None:
             print("[+] Open docs/wiki/README.md or run 'cephalo wiki serve' to view.")
 
     elif action == "serve":
-        import http.server
-        import socketserver
-        import webbrowser
         port = getattr(args, "port", 7433)
-        wiki_dir = wg.output_dir
+        from wiki_generator import run_deepwiki_server
+        run_deepwiki_server(port=port, open_browser=getattr(args, "open", True))
 
-        class WikiHandler(http.server.SimpleHTTPRequestHandler):
-            def __init__(self, *a, **kw):
-                super().__init__(*a, directory=str(wiki_dir), **kw)
 
-        print(f"[+] Serving Cephalo DeepWiki at http://127.0.0.1:{port}/")
-        if getattr(args, "open", True):
-            webbrowser.open(f"http://127.0.0.1:{port}/README.md")
-        with socketserver.TCPServer(("127.0.0.1", port), WikiHandler) as httpd:
-            try:
-                httpd.serve_forever()
-            except KeyboardInterrupt:
-                print("\n[+] DeepWiki server stopped.")
 
+
+def cmd_webhook(args) -> None:
+    """Manages the multi-channel quick capture HTTP webhook and ingress gateway."""
+    action = getattr(args, "webhook_action", None) or "status"
+    port = getattr(args, "port", 7434)
+    host = getattr(args, "host", "127.0.0.1")
+
+    if action == "serve":
+        from webhook_server import WebhookServer
+        server = WebhookServer(host=host, port=port, auth_token=getattr(args, "token", None))
+        server.start(background=False)
+
+    elif action == "status":
+        import urllib.request
+        url = f"http://{host}:{port}/health"
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if args.json:
+                    print(json.dumps(data, indent=2))
+                else:
+                    print(f"[+] Webhook Gateway is ONLINE at http://{host}:{port}/")
+                    print(f"    Service:        {data.get('service')}")
+                    print(f"    Prompts Logged: {data.get('prompts_logged')}")
+        except Exception:
+            if args.json:
+                print(json.dumps({"status": "offline", "url": url}, indent=2))
+            else:
+                print(f"[-] Webhook Gateway is OFFLINE at http://{host}:{port}/")
+                print("    Start it with: cephalo webhook serve (or start cephalo daemon)")
+
+    elif action == "send":
+        from webhook_server import send_quick_memory
+        text = getattr(args, "text", "")
+        cat = getattr(args, "category", "quick_note")
+        try:
+            res = send_quick_memory(text=text, category=cat, host=host, port=port)
+            if args.json:
+                print(json.dumps(res, indent=2))
+            else:
+                print(f"[+] Memory Sent via Webhook [{res.get('id', 'N/A')}]:")
+                print(f"    Category:  {res.get('category')}")
+                print(f"    Sanitized: {res.get('sanitized')}")
+        except Exception as e:
+            print(f"[-] Error sending memory to webhook: {e}")
 
 def cmd_youtube(args) -> None:
     """Extracts a YouTube video transcript directly, with optional pattern and indexing."""
@@ -1074,6 +1128,8 @@ def main():
     search_p.add_argument("--type", choices=["hybrid", "vector", "fts"], default="hybrid", help="Search mode.")
     search_p.add_argument("--where", type=str, default=None, help="SQL filter expression.")
     search_p.add_argument("--limit", type=int, default=3, help="Max results to return (default: 3).")
+    search_p.add_argument("--tag", type=str, default=None, help="Filter results by tag (e.g. #cinema/hdr or cinema).")
+    search_p.add_argument("--all", "--include-deprecated", dest="include_deprecated", action="store_true", help="Include superseded/deprecated memories in search results.")
 
     # Record
     rec_p = subparsers.add_parser("record", parents=[shared_parser], help="Sanitize, embed, and store a prompt or memory.")
@@ -1082,6 +1138,9 @@ def main():
     rec_p.add_argument("--category", type=str, default="general", help="Category label.")
     rec_p.add_argument("--source", type=str, default="agent", help="Source identifier.")
     rec_p.add_argument("--intent", type=str, default="", help="Extracted intent.")
+    rec_p.add_argument("--tag", "--tags", dest="tags", nargs="+", default=None, help="Explicit tags to associate with this memory.")
+    rec_p.add_argument("--supersedes", type=str, default=None, help="ID of previous memory record this entry supersedes and deprecates.")
+    rec_p.add_argument("--relates-to", dest="relates_to", nargs="+", default=None, help="IDs of related memory records or specialties.")
 
     # Sync
     sync_p = subparsers.add_parser("sync", parents=[shared_parser], help="Synchronize prompts.jsonl with LanceDB.")
@@ -1249,6 +1308,22 @@ def main():
     learn_watch_p = learn_sub.add_parser("watch", parents=[shared_parser], help="Run background continuous watcher.")
     learn_watch_p.add_argument("--interval", type=int, default=120, help="Interval between cycles in seconds (default: 120).")
 
+    # Webhook
+    wb_p = subparsers.add_parser("webhook", parents=[shared_parser], help="Multi-channel quick capture HTTP webhook and ingress gateway.")
+    wb_sub = wb_p.add_subparsers(dest="webhook_action", help="Webhook action")
+    wb_serve_p = wb_sub.add_parser("serve", parents=[shared_parser], help="Start foreground HTTP webhook receiver.")
+    wb_serve_p.add_argument("--port", type=int, default=7434, help="Webhook port (default: 7434).")
+    wb_serve_p.add_argument("--host", type=str, default="127.0.0.1", help="Webhook host interface (default: 127.0.0.1).")
+    wb_serve_p.add_argument("--token", type=str, default=None, help="Optional Bearer authentication token.")
+    wb_status_p = wb_sub.add_parser("status", parents=[shared_parser], help="Check webhook receiver status.")
+    wb_status_p.add_argument("--port", type=int, default=7434, help="Webhook port.")
+    wb_status_p.add_argument("--host", type=str, default="127.0.0.1", help="Webhook host.")
+    wb_send_p = wb_sub.add_parser("send", parents=[shared_parser], help="Send a quick memory directly to the webhook receiver.")
+    wb_send_p.add_argument("text", type=str, help="Text content to send.")
+    wb_send_p.add_argument("--category", type=str, default="quick_note", help="Category label.")
+    wb_send_p.add_argument("--port", type=int, default=7434, help="Target webhook port.")
+    wb_send_p.add_argument("--host", type=str, default="127.0.0.1", help="Target webhook host.")
+
     # MCP (Model Context Protocol) Server
     subparsers.add_parser("mcp", help="Launch native Model Context Protocol (MCP) server for Claude Code, Cursor, Windsurf, Zed, etc.")
 
@@ -1284,6 +1359,8 @@ def main():
         cmd_research(args)
     elif args.command == "learn":
         cmd_learn(args)
+    elif args.command == "webhook":
+        cmd_webhook(args)
     elif args.command == "mcp":
         cmd_mcp(args)
     elif args.command == "daemon":
