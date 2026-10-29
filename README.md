@@ -169,6 +169,27 @@ cephalo fetch "https://lancedb.github.io/lancedb/" --record
 cephalo fetch "https://news.ycombinator.com" --dynamic --record
 ```
 
+### AST Code Symbol & Definition Search (`cephalo def`)
+Inspired by XERJ's token-efficient `def` primitive, Cephalo allows AI agents and developers to extract exact function, class, type, interface, and struct definitions without wasteful full-file grepping:
+```bash
+# 1. Search for function or class definitions across the workspace
+cephalo def fetch
+
+# 2. Exact symbol lookup within a specific project directory
+cephalo def "WebSearchEngine" --path "./src" --exact
+
+# 3. Output token-dense JSON for direct agent consumption
+cephalo def "search" --json --limit 5
+```
+> **Supported Languages:** Python (`.py`), TypeScript/TSX (`.ts`, `.tsx`), JavaScript (`.js`, `.jsx`), Go (`.go`), and Rust (`.rs`) via Tree-sitter incremental AST cursors with zero memory leaks.
+
+### Reference Coding Engine
+When synthesizing domain specialties or researching technologies, Cephalo's `research_engine.py` automatically mines concrete AST signatures and type contracts from top battle-tested open-source GitHub repositories:
+```bash
+# Deep research a domain and mine real AST patterns from leading repositories
+cephalo research "BullMQ Redis Job Queue" --project "backend" --create
+```
+
 ---
 
 ## 5. Zero-Leak Privacy Shield
@@ -274,6 +295,8 @@ flowchart TD
         
         CLI --> Specialties["Specialties Manager\n(Project -> Specialties -> User Preferences)"]
         Specialties --> LanceDB
+
+        CLI --> ASTIndexer["AST Code Symbol Indexer & Reference Coder\n(Tree-sitter Python / TS / Go / Rust)"]
     end
     
     LanceDB -->|"Injected Context (JSON / Table)"| CLI --> Agent
@@ -291,7 +314,8 @@ Cephalo stands on the shoulders of giants in the open-source community. Whenever
 - **[Microsoft Presidio](https://github.com/microsoft/presidio)** — Privacy-preserving PII detection and automated contextual data anonymization layer.
 - **[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)** — Undetected automation framework eliminating CDP / Webdriver leak points for deep web research.
 - **[Memos](https://github.com/usememos/memos)** — Open-source, privacy-first knowledge-base service inspiring Cephalo's 52-week activity heatmap, interactive reverse-chronological memory stream, inline tag taxonomy, and multi-channel quick capture gateway.
-- **[XERJ](https://github.com/xerj-org/xerj)** — High-velocity AI search engine and MCP server inspiring our reference coding and token efficiency principles.
+- **[XERJ](https://github.com/xerj-org/xerj)** — High-velocity AI search engine and MCP server inspiring our token-efficient AST symbol search (`cephalo def`) and reference coding engine.
+- **[Tree-sitter](https://github.com/tree-sitter/tree-sitter)** — Incremental parsing system providing blazing fast, memory-safe AST cursors across multi-language codebases without full-file overhead.
 
 ---
 

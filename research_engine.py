@@ -527,6 +527,10 @@ def main():
         print(f"Repositories ({len(synthesized['github_repos'])}):")
         for r in synthesized["github_repos"]:
             print(f"  * {r['name']} (Stars: {r['stars']}): {r['description'][:80]}...")
+        if synthesized.get("reference_patterns"):
+            print(f"Reference Patterns ({len(synthesized['reference_patterns'])} mined):")
+            for p in synthesized["reference_patterns"][:4]:
+                print(f"  * {p['symbol']} ({p['kind']}) in {p['repo']}:{p['file']}")
         print(f"Key Takeaways ({len(synthesized['key_takeaways'])}):")
         for t in synthesized["key_takeaways"][:4]:
             print(f"  - {t}")
