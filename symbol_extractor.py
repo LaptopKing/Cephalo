@@ -17,6 +17,7 @@ Supported Languages (via Tree-sitter):
 from __future__ import annotations
 
 import ast
+import bisect
 import json
 import logging
 import os
@@ -36,11 +37,15 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# Ensure unlimited int string conversion digits in Python 3.11+
+if hasattr(sys, "set_int_max_str_digits"):
+    sys.set_int_max_str_digits(0)
+
 logger = logging.getLogger("cephalo.symbol_extractor")
 
 # Try importing tree-sitter and language modules
 HAS_TREE_SITTER = False
-PARSERS: Dict[str, Any] = {}
+PARSERS: Dict[str, Tuple[Any, str]] = {}
 
 try:
     import tree_sitter
@@ -71,7 +76,7 @@ try:
 
     HAS_TREE_SITTER = True
 except Exception as e:
-    logger.debug(f"Tree-sitter initialization failed ({e}), fallback regex enabled.")
+    logger.debug(f"Tree-sitter initialization failed ({e}), fallback AST/regex enabled.")
     HAS_TREE_SITTER = False
 
 
@@ -106,18 +111,23 @@ class SymbolDefinition:
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
-    def to_markdown(self) -> str:
+    def to_markdown(self, base_dir: Optional[Path] = None) -> str:
         loc = f"{self.file_path}#L{self.start_line}-L{self.end_line}"
         doc_part = f"\n  > {self.docstring}" if self.docstring else ""
+        abs_path = Path(self.file_path)
+        if not abs_path.is_absolute() and base_dir:
+            abs_path = (base_dir / self.file_path).resolve()
+        clean_url = str(abs_path).replace("\\", "/")
         return (
-            f"- **`{self.name}`** (`{self.kind}`) — [{self.file_path}:L{self.start_line}](file:///{self.file_path.replace(os.sep, '/')})\n"
+            f"- **`{self.name}`** (`{self.kind}`) — [{self.file_path}:L{self.start_line}](file:///{clean_url}#L{self.start_line}-L{self.end_line})\n"
             f"  ```\n  {self.signature}\n  ```{doc_part}"
         )
 
 
 class CodeSymbolIndexer:
     """
-    Traverses codebases, parses AST nodes, and queries symbols and definitions.
+    Traverses codebases, parses AST nodes via Tree-sitter cursors or native ASTs,
+    and returns exact symbol definitions, line ranges, and signatures.
     """
 
     SUPPORTED_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs"}
@@ -133,13 +143,18 @@ class CodeSymbolIndexer:
         max_results: int = 20,
     ) -> List[SymbolDefinition]:
         """
-        Searches the target directory for functions, classes, and types matching symbol_name.
+        Searches the target directory or single file for symbols matching symbol_name.
         """
-        search_dir = (target_dir or self.root_dir).resolve()
+        search_path = (target_dir or self.root_dir).resolve()
         results: List[SymbolDefinition] = []
         pattern = re.compile(f"^{re.escape(symbol_name)}$" if exact else re.escape(symbol_name), re.IGNORECASE)
 
-        for file_path in self._walk_source_files(search_dir):
+        if search_path.is_file():
+            files_to_check = [search_path]
+        else:
+            files_to_check = list(self._walk_source_files(search_path))
+
+        for file_path in files_to_check:
             if len(results) >= max_results:
                 break
             try:
@@ -171,8 +186,20 @@ class CodeSymbolIndexer:
         except ValueError:
             pass
 
+        return self.extract_symbols_from_content(content_bytes, rel_path, ext)
+
+    def extract_symbols_from_content(
+        self,
+        content_bytes: bytes,
+        rel_path: str,
+        ext: Optional[str] = None,
+    ) -> List[SymbolDefinition]:
+        """Extracts AST symbols from in-memory content bytes."""
+        if ext is None:
+            ext = os.path.splitext(rel_path)[1].lower()
+
         if HAS_TREE_SITTER and ext in PARSERS:
-            return self._extract_tree_sitter_symbols(file_path, content_bytes, rel_path, ext)
+            return self._extract_tree_sitter_symbols(content_bytes, rel_path, ext)
         elif ext == ".py":
             return self._extract_python_ast_symbols(content_bytes, rel_path)
         else:
@@ -189,11 +216,14 @@ class CodeSymbolIndexer:
 
     def _extract_tree_sitter_symbols(
         self,
-        file_path: Path,
         content_bytes: bytes,
         rel_path: str,
         ext: str,
     ) -> List[SymbolDefinition]:
+        """
+        Extracts AST symbols using a Tree-sitter TreeCursor and precomputed byte-to-line index.
+        Cursor traversal avoids memory leaks, recursion limits, and platform ABI discrepancies.
+        """
         parser, lang_name = PARSERS[ext]
         try:
             tree = parser.parse(content_bytes)
@@ -201,152 +231,180 @@ class CodeSymbolIndexer:
             return []
 
         lines = content_bytes.split(b"\n")
+
+        # Build byte-offset line index for fast O(log N) line lookup
+        line_starts = [0]
+        for i, b in enumerate(content_bytes):
+            if b == 10:  # newline
+                line_starts.append(i + 1)
+
+        def byte_to_line(byte_offset: int) -> int:
+            return bisect.bisect_right(line_starts, byte_offset)
+
         symbols: List[SymbolDefinition] = []
+        cursor = tree.walk()
+        has_more = True
 
-        def get_line_text(start_row: int, end_row: int) -> str:
-            sub = lines[start_row : min(end_row + 1, len(lines))]
-            return b"\n".join(sub).decode("utf-8", errors="ignore").strip()
-
-        def get_node_text(node) -> str:
-            return node.text.decode("utf-8", errors="ignore").strip()
-
-        stack = [tree.root_node]
-        while stack:
-            node = stack.pop()
+        while has_more:
+            node = cursor.node
             node_type = node.type
 
-            # Python function & class
+            # --- Python ---
             if lang_name == "python":
                 if node_type == "function_definition":
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        name = get_node_text(name_node)
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"def {name}(...)"
                         symbols.append(
                             SymbolDefinition(
                                 name=name,
                                 kind="function",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language="python",
                             )
                         )
                 elif node_type == "class_definition":
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        name = get_node_text(name_node)
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"class {name}"
                         symbols.append(
                             SymbolDefinition(
                                 name=name,
                                 kind="class",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language="python",
                             )
                         )
 
-            # TypeScript / JavaScript
+            # --- TypeScript / JavaScript / TSX ---
             elif lang_name in ("typescript", "tsx", "javascript"):
                 if node_type in ("function_declaration", "generator_function_declaration"):
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"function {name}"
                         symbols.append(
                             SymbolDefinition(
-                                name=get_node_text(name_node),
+                                name=name,
                                 kind="function",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language=lang_name,
                             )
                         )
                 elif node_type == "class_declaration":
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"class {name}"
                         symbols.append(
                             SymbolDefinition(
-                                name=get_node_text(name_node),
+                                name=name,
                                 kind="class",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language=lang_name,
                             )
                         )
                 elif node_type == "interface_declaration":
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"interface {name}"
                         symbols.append(
                             SymbolDefinition(
-                                name=get_node_text(name_node),
+                                name=name,
                                 kind="interface",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language=lang_name,
                             )
                         )
                 elif node_type == "type_alias_declaration":
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"type {name}"
                         symbols.append(
                             SymbolDefinition(
-                                name=get_node_text(name_node),
+                                name=name,
                                 kind="type",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language=lang_name,
                             )
                         )
 
-            # Go
+            # --- Go ---
             elif lang_name == "go":
                 if node_type == "function_declaration":
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"func {name}"
                         symbols.append(
                             SymbolDefinition(
-                                name=get_node_text(name_node),
+                                name=name,
                                 kind="function",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language="go",
                             )
                         )
                 elif node_type == "method_declaration":
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"func {name}"
                         symbols.append(
                             SymbolDefinition(
-                                name=get_node_text(name_node),
+                                name=name,
                                 kind="method",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language="go",
                             )
                         )
                 elif node_type == "type_declaration":
-                    first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                    s_line = byte_to_line(node.start_byte)
+                    e_line = byte_to_line(node.end_byte)
+                    first_line = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else ""
                     m = re.search(r"type\s+([A-Za-z0-9_]+)\s+(struct|interface)", first_line)
                     if m:
                         symbols.append(
@@ -354,27 +412,30 @@ class CodeSymbolIndexer:
                                 name=m.group(1),
                                 kind=m.group(2),
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
+                                start_line=s_line,
+                                end_line=e_line,
                                 signature=first_line,
                                 language="go",
                             )
                         )
 
-            # Rust
+            # --- Rust ---
             elif lang_name == "rust":
                 if node_type == "function_item":
                     name_node = node.child_by_field_name("name")
                     if name_node:
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"fn {name}"
                         symbols.append(
                             SymbolDefinition(
-                                name=get_node_text(name_node),
+                                name=name,
                                 kind="function",
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language="rust",
                             )
                         )
@@ -382,21 +443,36 @@ class CodeSymbolIndexer:
                     name_node = node.child_by_field_name("name")
                     if name_node:
                         kind = node_type.replace("_item", "")
-                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
+                        name = name_node.text.decode("utf-8", errors="ignore").strip()
+                        s_line = byte_to_line(node.start_byte)
+                        e_line = byte_to_line(node.end_byte)
+                        sig = lines[s_line - 1].decode("utf-8", errors="ignore").strip() if s_line <= len(lines) else f"{kind} {name}"
                         symbols.append(
                             SymbolDefinition(
-                                name=get_node_text(name_node),
+                                name=name,
                                 kind=kind,
                                 file_path=rel_path,
-                                start_line=node.start_point.row + 1,
-                                end_line=node.end_point.row + 1,
-                                signature=first_line,
+                                start_line=s_line,
+                                end_line=e_line,
+                                signature=sig,
                                 language="rust",
                             )
                         )
 
-            if node.children:
-                stack.extend(reversed(node.children))
+            # Cursor Traversal (Depth-First)
+            if cursor.goto_first_child():
+                continue
+            if cursor.goto_next_sibling():
+                continue
+
+            # Backtrack
+            backtrack = True
+            while backtrack:
+                if not cursor.goto_parent():
+                    has_more = False
+                    break
+                if cursor.goto_next_sibling():
+                    break
 
         return symbols
 
@@ -476,10 +552,14 @@ class CodeSymbolIndexer:
 
 
 if __name__ == "__main__":
-    import sys
+    import atexit
     indexer = CodeSymbolIndexer()
     query = sys.argv[1] if len(sys.argv) > 1 else "search"
-    matches = indexer.find_definitions(query)
+    target_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
+    matches = indexer.find_definitions(query, target_dir=target_path)
     print(f"Found {len(matches)} symbols matching '{query}':")
     for m in matches:
         print(m.to_markdown())
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)

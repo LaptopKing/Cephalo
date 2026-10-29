@@ -81,8 +81,11 @@ cephalo status
 
 ### Store & Retrieve Long-Term Memory
 ```bash
-# Ingest memory (automatically sanitized, embedded, and stored)
-cephalo record "We decided to use PostgreSQL for transactional data and LanceDB for vector search" --category "tech_stack"
+# Ingest memory with automatic inline #tags and LanceDB indexing
+cephalo record "We decided to use PostgreSQL for transactional data and LanceDB for vector search #tech_stack/database #architecture" --category "tech_stack"
+
+# Link superseding decisions (auto-deprecates previous decisions in vector search)
+cephalo record "Upgraded to LanceDB v0.17 for native hybrid FTS search #database" --supersedes "prompt-042" --category "tech_stack"
 
 # Unix pipe directly into sanitized memory
 git diff | cephalo record --category "git_changes"
@@ -93,8 +96,9 @@ cephalo record --clip --category "quick_note"
 # Query Cephalo using hybrid search (Dense semantic + BM25 keyword matching)
 cephalo search "What database do we use for vectors?"
 
-# Copy search results directly to Windows clipboard
-cephalo search "database choices" --copy
+# Filter search results by tag or include deprecated/historical records
+cephalo search "database" --tag "tech_stack/database"
+cephalo search "database choices" --all --copy
 ```
 
 ### Cognitive Patterns ("Reflexes")
@@ -125,14 +129,28 @@ cephalo youtube "https://www.youtube.com/watch?v=VIDEO_ID" --record --category "
 cephalo context export --project "backend" --specialty "redis-caching" --copy
 ```
 
-### Sovereign DeepWiki Engine
-Generate offline, publication-grade codebase documentation and interactive architecture codemaps:
+### Sovereign DeepWiki & Interactive Activity Dashboard
+Generate offline, publication-grade codebase documentation, interactive architecture codemaps, and a 52-week activity heatmap:
 ```bash
-# 1. Inspect codebase AST and generate Markdown wiki in docs/wiki/
+# 1. Inspect codebase AST and generate Markdown wiki + interactive dashboard in docs/wiki/
 cephalo wiki generate
 
-# 2. Serve the interactive DeepWiki locally on 127.0.0.1:7433
+# 2. Serve the interactive DeepWiki dashboard & memory feed locally on 127.0.0.1:7433
 cephalo wiki serve
+```
+> Features: 52-week contribution heatmap, reverse-chronological memory cards, interactive `#tag` filtering, and instant in-browser quick capture.
+
+### Multi-Channel Quick Capture (Webhooks & Daemon)
+Capture fleeting thoughts, browser bookmarks, and mobile notes into Cephalo from anywhere:
+```bash
+# 1. Start the sovereign HTTP webhook gateway (runs on port 7434, or automatically in cephalo daemon)
+cephalo webhook serve --port 7434
+
+# 2. Check gateway status
+cephalo webhook status
+
+# 3. Post memory via cURL, iOS Shortcuts, or CLI helper
+cephalo webhook send "Check out Qwen3-Embedding ONNX benchmarks #ai/embeddings" --category "research"
 ```
 
 ### Live Web Research & Dynamic Chromium Crawling
@@ -272,6 +290,7 @@ Cephalo stands on the shoulders of giants in the open-source community. Whenever
 - **[FastEmbed](https://github.com/qdrant/fastembed)** by Qdrant — Fast, lightweight ONNX runtime embedding engine for local multilingual Qwen models without heavy PyTorch dependencies.
 - **[Microsoft Presidio](https://github.com/microsoft/presidio)** — Privacy-preserving PII detection and automated contextual data anonymization layer.
 - **[Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)** — Undetected automation framework eliminating CDP / Webdriver leak points for deep web research.
+- **[Memos](https://github.com/usememos/memos)** — Open-source, privacy-first knowledge-base service inspiring Cephalo's 52-week activity heatmap, interactive reverse-chronological memory stream, inline tag taxonomy, and multi-channel quick capture gateway.
 - **[XERJ](https://github.com/xerj-org/xerj)** — High-velocity AI search engine and MCP server inspiring our reference coding and token efficiency principles.
 
 ---

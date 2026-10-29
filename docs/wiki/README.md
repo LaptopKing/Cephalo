@@ -12,7 +12,7 @@ Welcome to the offline, sovereign architecture documentation and codemap for **C
 
 ## Codebase Summary
 - **Active Python Modules:** 18 core modules
-- **Total Source Lines:** 10,669 LOC
+- **Total Source Lines:** 10,749 LOC
 - **Vector Storage:** Embedded LanceDB Columnar (Apache Arrow)
 - **Embeddings:** FastEmbed ONNX Runtime (Qwen 1024d Local)
 - **Subprocess Discipline:** Strictly enforces `CREATE_NO_WINDOW` (`0x08000000`) on Windows

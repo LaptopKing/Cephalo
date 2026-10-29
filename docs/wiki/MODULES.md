@@ -282,7 +282,7 @@ Provides automated knowledge synthesis and specialty generation for:
 ---
 
 ## [`symbol_extractor.py`](symbol_extractor.py)
-**Lines of Code:** 485 | **Imports:** 10
+**Lines of Code:** 565 | **Imports:** 11
 
 > Cephalo - AST Code Symbol & Definition Indexer (symbol_extractor.py)
 ===================================================================
@@ -294,8 +294,8 @@ code into AST nodes and returning exact definitions, line numbers, and signature
 - **`SymbolDefinition`**
   **Methods:** `to_dict()`, `to_markdown()`
 - **`CodeSymbolIndexer`**
-  *Traverses codebases, parses AST nodes, and queries symbols and definitions.*
-  **Methods:** `__init__()`, `find_definitions()`, `extract_symbols_from_file()`, `_walk_source_files()`, `_extract_tree_sitter_symbols()`, `_extract_python_ast_symbols()`
+  *Traverses codebases, parses AST nodes via Tree-sitter cursors or native ASTs,*
+  **Methods:** `__init__()`, `find_definitions()`, `extract_symbols_from_file()`, `extract_symbols_from_content()`, `_walk_source_files()`, `_extract_tree_sitter_symbols()`
 
 ---
 
