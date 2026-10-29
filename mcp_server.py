@@ -11,5 +11,7 @@ import cephalo.services.mcp_server as mcp_server
 from cephalo.services.mcp_server import *
 
 if __name__ == "__main__":
-    if hasattr(mcp_server, "main"):
+    if hasattr(mcp_server, "run_stdio_server"):
+        mcp_server.run_stdio_server()
+    elif hasattr(mcp_server, "main"):
         mcp_server.main()
