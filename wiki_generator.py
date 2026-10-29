@@ -103,6 +103,7 @@ class WikiGenerator:
         gen_files.append(self._write_cli_reference())
         gen_files.append(self._write_privacy_shield())
         gen_files.append(self._write_index(modules))
+        gen_files.append(self._write_timeline_dashboard())
 
         return gen_files
 

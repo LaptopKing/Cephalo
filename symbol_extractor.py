@@ -21,9 +21,20 @@ import json
 import logging
 import os
 import re
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+# Force UTF-8 on Windows terminal/pipes
+if sys.platform == "win32":
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 logger = logging.getLogger("cephalo.symbol_extractor")
 
@@ -112,7 +123,7 @@ class CodeSymbolIndexer:
     SUPPORTED_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs"}
 
     def __init__(self, root_dir: Optional[Path] = None):
-        self.root_dir = (root_dir or Path.cwd()).resolve()
+        self.root_dir = (root_dir or Path(__file__).resolve().parent).resolve()
 
     def find_definitions(
         self,
@@ -199,7 +210,9 @@ class CodeSymbolIndexer:
         def get_node_text(node) -> str:
             return node.text.decode("utf-8", errors="ignore").strip()
 
-        def traverse(node):
+        stack = [tree.root_node]
+        while stack:
+            node = stack.pop()
             node_type = node.type
 
             # Python function & class
@@ -208,9 +221,7 @@ class CodeSymbolIndexer:
                     name_node = node.child_by_field_name("name")
                     if name_node:
                         name = get_node_text(name_node)
-                        sig_lines = lines[node.start_point.row : node.start_point.row + 3]
-                        sig = b" ".join(sig_lines).decode("utf-8", errors="ignore").split(":\n")[0]
-                        sig = sig.split(":")[0] if ":" in sig else sig
+                        first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
                         symbols.append(
                             SymbolDefinition(
                                 name=name,
@@ -218,7 +229,7 @@ class CodeSymbolIndexer:
                                 file_path=rel_path,
                                 start_line=node.start_point.row + 1,
                                 end_line=node.end_point.row + 1,
-                                signature=sig.strip(),
+                                signature=first_line,
                                 language="python",
                             )
                         )
@@ -336,7 +347,6 @@ class CodeSymbolIndexer:
                         )
                 elif node_type == "type_declaration":
                     first_line = lines[node.start_point.row].decode("utf-8", errors="ignore").strip()
-                    # Extract type name
                     m = re.search(r"type\s+([A-Za-z0-9_]+)\s+(struct|interface)", first_line)
                     if m:
                         symbols.append(
@@ -385,10 +395,9 @@ class CodeSymbolIndexer:
                             )
                         )
 
-            for child in node.children:
-                traverse(child)
+            if node.children:
+                stack.extend(reversed(node.children))
 
-        traverse(tree.root_node)
         return symbols
 
     def _extract_python_ast_symbols(self, content_bytes: bytes, rel_path: str) -> List[SymbolDefinition]:

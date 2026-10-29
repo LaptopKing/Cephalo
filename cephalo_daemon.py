@@ -72,6 +72,9 @@ class CephaloDaemon:
     def __init__(self, interval_seconds: int = DEFAULT_INTERVAL_SECONDS):
         self.interval_seconds = interval_seconds
         self.running = False
+        self.webhook_port = int(os.environ.get("CEPHALO_WEBHOOK_PORT", "7434"))
+        self.webhook_server = None
+        self.telegram_bot = None
         DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     def _write_pid(self) -> None:
@@ -157,6 +160,22 @@ class CephaloDaemon:
         self._write_pid()
         logger.info(f"Cephalo Always-On Daemon started (PID {os.getpid()}, Interval: {self.interval_seconds}s)")
 
+        # Start background quick-capture webhook server
+        try:
+            from webhook_server import WebhookServer, TelegramIngestBot
+            self.webhook_server = WebhookServer(port=self.webhook_port)
+            self.webhook_server.start(background=True)
+            logger.info("Daemon quick-capture webhook server active on port %d", self.webhook_port)
+
+            tg_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+            if tg_token:
+                allowed_chats = [c.strip() for c in os.environ.get("TELEGRAM_ALLOWED_CHATS", "").split(",") if c.strip()]
+                self.telegram_bot = TelegramIngestBot(bot_token=tg_token, allowed_chat_ids=allowed_chats)
+                self.telegram_bot.start()
+                logger.info("Daemon Telegram thought capture poller started.")
+        except Exception as wh_err:
+            logger.warning("Could not start daemon webhook listener: %s", wh_err)
+
         def handle_signal(sig, frame):
             logger.info("Termination signal received. Stopping daemon...")
             self.running = False
@@ -183,6 +202,10 @@ class CephaloDaemon:
         except Exception as loop_err:
             logger.error(f"Daemon fatal loop crash: {loop_err}", exc_info=True)
         finally:
+            if self.webhook_server:
+                self.webhook_server.stop()
+            if self.telegram_bot:
+                self.telegram_bot.stop()
             self._remove_pid()
             logger.info("Cephalo Daemon stopped gracefully.")
 
