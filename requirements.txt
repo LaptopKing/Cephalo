@@ -16,8 +16,10 @@ numpy==2.4.6
 tokenizers==0.23.3
 huggingface-hub==1.33.0
 
-# --- Dynamic Web Crawler & Chromium Browser Engine ---
-# Playwright-powered headless or persistent browser for JavaScript SPAs & web research
+# --- Adaptive Stealth Web Crawler & Extraction Engine ---
+# Scrapling: Adaptive, stealth scraping with TLS impersonation, Patchright, and clean Markdown extraction
+scrapling[fetchers]>=0.5.0
+markdownify>=1.2.0
 playwright>=1.40.0
 youtube-transcript-api>=1.2.0
 

@@ -59,6 +59,16 @@ except ImportError:
     sys.path.insert(0, str(BASE_DIR))
     from serp_renderer import CephaloSERP, SearchItem, get_social_badge, render_serp_html
 
+# Scrapling Adaptive Stealth Scraping Integration (curl_cffi TLS impersonation + Patchright)
+try:
+    from scrapling.fetchers import Fetcher as ScraplingFetcher
+    from scrapling.fetchers import StealthyFetcher as ScraplingStealthyFetcher
+    HAS_SCRAPLING = True
+    logging.getLogger("scrapling").setLevel(logging.WARNING)
+except ImportError:
+    HAS_SCRAPLING = False
+
+
 
 def is_deep_discussion_url(url: str) -> bool:
     """
@@ -263,7 +273,7 @@ class WebSearchEngine:
         return None
 
     def _init_cache_db(self) -> None:
-        """Initializes SQLite cache database to preserve monthly API quota."""
+        """Initializes SQLite cache database to preserve monthly API quota and accelerate retrieval."""
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
             with sqlite3.connect(CACHE_DB_PATH) as conn:
@@ -276,9 +286,52 @@ class WebSearchEngine:
                         expires_at REAL NOT NULL
                     )
                 """)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS page_cache (
+                        url_hash TEXT PRIMARY KEY,
+                        url TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        engine TEXT NOT NULL,
+                        created_at REAL NOT NULL,
+                        expires_at REAL NOT NULL
+                    )
+                """)
                 conn.commit()
         except Exception as e:
             logger.debug(f"Failed to initialize search cache DB: {e}")
+
+    def _get_page_from_cache(self, url: str) -> Optional[str]:
+        """Retrieves cached page content if still fresh."""
+        try:
+            url_hash = hashlib.sha256(url.strip().encode("utf-8")).hexdigest()
+            now = time.time()
+            with sqlite3.connect(CACHE_DB_PATH) as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT content FROM page_cache WHERE url_hash = ? AND expires_at > ?",
+                    (url_hash, now),
+                )
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+        except Exception as e:
+            logger.debug(f"Page cache lookup failed: {e}")
+        return None
+
+    def _save_page_to_cache(self, url: str, content: str, engine: str = "scrapling", ttl_hours: float = 24.0) -> None:
+        """Persists extracted page markdown/text to SQLite cache."""
+        try:
+            url_hash = hashlib.sha256(url.strip().encode("utf-8")).hexdigest()
+            now = time.time()
+            expires = now + (ttl_hours * 3600)
+            with sqlite3.connect(CACHE_DB_PATH) as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO page_cache (url_hash, url, content, engine, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (url_hash, url.strip(), content, engine, now, expires),
+                )
+                conn.commit()
+        except Exception as e:
+            logger.debug(f"Failed to cache page content: {e}")
 
     def _get_from_cache(self, query: str) -> Optional[CephaloSERP]:
         """Retrieves cached SERP result if still fresh."""
@@ -849,15 +902,46 @@ class WebSearchEngine:
             "content": full_text,
         }
 
+    CHALLENGE_KEYWORDS = [
+        "just a moment...",
+        "checking your browser",
+        "cf-turnstile",
+        "cloudflare turnstile",
+        "attention required! | cloudflare",
+        "access denied | www.",
+        "please enable cookies",
+        "security check to continue",
+        "enable javascript and cookies",
+        "human verification",
+        "ray id:",
+    ]
+
+    def _is_challenge_page(self, text: str) -> bool:
+        """Detects if scraped text is an anti-bot or Cloudflare challenge interstitial."""
+        if not text:
+            return True
+        t_low = text.lower()
+        if len(text.strip()) < 600 and any(kw in t_low for kw in self.CHALLENGE_KEYWORDS):
+            return True
+        return False
+
     def fetch_url(
         self,
         target_url: str,
-        max_chars: int = 15000,
+        max_chars: int = 25000,
         dynamic: bool = False,
         headless: bool = True,
         persistent: bool = False,
+        use_cache: bool = True,
     ) -> str:
-        """Fetches a URL and returns clean readable markdown/text content."""
+        """
+        Fetches a URL and returns clean readable markdown/text content using a tiered
+        high-performance architecture:
+        - Tier 0: SQLite URL content cache (instant sub-millisecond retrieval).
+        - Tier 1: Scrapling Fetcher (curl_cffi TLS impersonation, HTTP/2 & HTTP/3, ~200ms).
+        - Tier 2: Scrapling StealthyFetcher / Patchright (stealth Chromium, Turnstile solver).
+        - Tier 3: Fallback to urllib.request + Playwright sync_api.
+        """
         if self.is_youtube_url(target_url):
             try:
                 yt_res = self.fetch_youtube_transcript(target_url, max_chars=max_chars)
@@ -865,14 +949,63 @@ class WebSearchEngine:
             except Exception as e:
                 logger.warning("YouTube transcript fetch failed (%s), falling back to standard fetch", e)
 
+        # 0. Check SQLite page cache
+        if use_cache:
+            cached = self._get_page_from_cache(target_url)
+            if cached:
+                logger.info(f"Page cache hit for {target_url}")
+                if len(cached) > max_chars:
+                    return cached[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
+                return cached
+
+        # Explicit dynamic rendering requested
         if dynamic:
             return self.fetch_dynamic(
                 target_url=target_url,
                 max_chars=max_chars,
                 headless=headless,
                 persistent=persistent,
+                use_cache=use_cache,
             )
 
+        # 1. Tier 1: Scrapling Stealth HTTP Fetcher
+        if HAS_SCRAPLING:
+            try:
+                res = ScraplingFetcher.get(
+                    target_url,
+                    timeout=12,
+                    follow_redirects=True,
+                )
+                if res.status == 200:
+                    try:
+                        md_text = res.markdown().strip()
+                    except Exception:
+                        md_text = res.get_all_text().strip()
+
+                    # Verify not blocked by Cloudflare interstitial and content is substantive
+                    if md_text and not self._is_challenge_page(md_text) and len(md_text) >= 150:
+                        if use_cache:
+                            self._save_page_to_cache(target_url, md_text, engine="scrapling_fetcher")
+                        if len(md_text) > max_chars:
+                            return md_text[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
+                        return md_text
+                    else:
+                        logger.info(f"Scrapling static fetch returned minimal or challenge content for {target_url}, escalating to dynamic stealth fetcher...")
+                elif res.status in (403, 503):
+                    logger.info(f"Scrapling static fetch returned HTTP {res.status} for {target_url}, escalating to dynamic stealth fetcher...")
+            except Exception as e:
+                logger.debug(f"Scrapling Fetcher error on {target_url}: {e}, escalating...")
+
+            # Escalate automatically to Tier 2 (StealthyFetcher)
+            return self.fetch_dynamic(
+                target_url=target_url,
+                max_chars=max_chars,
+                headless=headless,
+                persistent=persistent,
+                use_cache=use_cache,
+            )
+
+        # 2. Tier 3: Legacy urllib.request fallback
         try:
             req = urllib.request.Request(target_url, headers={"User-Agent": self.USER_AGENT})
             with urllib.request.urlopen(req, timeout=12) as resp:
@@ -888,6 +1021,9 @@ class WebSearchEngine:
             if len(text.strip()) < 100:
                 text += "\n\n[Notice: Page returned minimal text. Use --dynamic flag to render with Chromium]"
 
+            if use_cache and len(text.strip()) >= 100:
+                self._save_page_to_cache(target_url, text, engine="urllib_legacy")
+
             if len(text) > max_chars:
                 text = text[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
             return text
@@ -901,13 +1037,43 @@ class WebSearchEngine:
         max_chars: int = 25000,
         headless: bool = True,
         persistent: bool = False,
-        wait_seconds: float = 3.0,
+        wait_seconds: float = 2.0,
+        use_cache: bool = True,
     ) -> str:
-        """Launches Playwright Chromium to fetch and render dynamic SPAs."""
+        """
+        Executes dynamic JS rendering and anti-bot challenge solving.
+        Prefers Scrapling StealthyFetcher (Patchright with Turnstile solver),
+        falling back to Playwright sync_api.
+        """
+        # 1. Tier 2: Scrapling StealthyFetcher (Patchright)
+        if HAS_SCRAPLING:
+            try:
+                res = ScraplingStealthyFetcher.fetch(
+                    target_url,
+                    headless=headless,
+                    solve_cloudflare=True,
+                    timeout=25,
+                )
+                if res.status == 200:
+                    try:
+                        md_text = res.markdown().strip()
+                    except Exception:
+                        md_text = res.get_all_text().strip()
+
+                    if md_text and not self._is_challenge_page(md_text):
+                        if use_cache:
+                            self._save_page_to_cache(target_url, md_text, engine="scrapling_stealthy")
+                        if len(md_text) > max_chars:
+                            return md_text[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
+                        return md_text
+            except Exception as stealth_err:
+                logger.warning(f"Scrapling StealthyFetcher failed on {target_url} ({stealth_err}), falling back to Playwright Chromium...")
+
+        # 2. Tier 3: Legacy Playwright Chromium fallback
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            return "[Error: Playwright is not installed. Run 'pip install playwright && playwright install chromium']"
+            return "[Error: Neither Scrapling nor Playwright are available for dynamic fetching. Run 'pip install scrapling[all]']"
 
         with sync_playwright() as p:
             if persistent:
@@ -944,6 +1110,8 @@ class WebSearchEngine:
                 }""")
 
                 cleaned = re.sub(r'\n\s*\n+', '\n\n', raw_text).strip()
+                if use_cache and len(cleaned) >= 100:
+                    self._save_page_to_cache(target_url, cleaned, engine="playwright_legacy")
                 if len(cleaned) > max_chars:
                     cleaned = cleaned[:max_chars] + f"\n\n[Truncated to {max_chars} characters]"
                 return cleaned
