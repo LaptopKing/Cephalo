@@ -127,7 +127,7 @@ class CephaloDaemon:
             logger.debug(f"Transcript harvest step skipped/failed: {e}")
             cycle_result["harvest_error"] = str(e)
 
-        # 3. Auto-commit and push if new specialties or profile changes occurred
+        # 3. Auto-commit locally (safe version history) and optionally push
         try:
             status_proc = subprocess.run(
                 ["git", "-C", str(SCRIPT_DIR), "status", "-s"],
@@ -138,17 +138,23 @@ class CephaloDaemon:
             )
             git_changes = status_proc.stdout.strip()
             if git_changes:
-                logger.info("Detected local Cephalo changes. Synchronizing to GitHub...")
+                logger.info("Detected local Cephalo changes. Staging and committing locally...")
                 subprocess.run(["git", "-C", str(SCRIPT_DIR), "add", "."], capture_output=True, check=True, timeout=15, creationflags=NO_WINDOW_FLAG)
                 commit_msg = f"chore(auto-sync): autonomous continuous learning cycle [{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}]"
                 subprocess.run(["git", "-C", str(SCRIPT_DIR), "commit", "-m", commit_msg], capture_output=True, check=True, timeout=15, creationflags=NO_WINDOW_FLAG)
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "push", "origin", "main"], capture_output=True, check=True, timeout=25, creationflags=NO_WINDOW_FLAG)
-                logger.info("Successfully pushed updates to LaptopKing/Cephalo.")
-                cycle_result["git_pushed"] = True
+
+                # Push is strictly opt-in via CEPHALO_AUTO_PUSH=1 or --auto-push flag
+                auto_push_enabled = os.environ.get("CEPHALO_AUTO_PUSH", "0").lower() in ("1", "true", "yes")
+                if auto_push_enabled:
+                    subprocess.run(["git", "-C", str(SCRIPT_DIR), "push", "origin", "main"], capture_output=True, check=True, timeout=25, creationflags=NO_WINDOW_FLAG)
+                    logger.info("Successfully pushed updates to remote origin.")
+                    cycle_result["git_pushed"] = True
+                else:
+                    cycle_result["git_pushed"] = False
             else:
                 cycle_result["git_pushed"] = False
         except Exception as e:
-            logger.warning(f"Git auto-sync skipped: {e}")
+            logger.debug(f"Git auto-sync notice: {e}")
             cycle_result["git_error"] = str(e)
 
         self._update_status(cycle_result)

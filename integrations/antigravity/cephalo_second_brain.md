@@ -2,7 +2,7 @@
 
 ## Core Invariant: Omnipresent Autonomous Second Brain
 The user has an omnipresent, local-first Second Brain called **Cephalo** located at:
-`C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain`
+`{{CEPHALO_DIR}}`
 
 Cephalo is the user's permanent, long-term cognitive coprocessor across **ALL sessions (new and existing)**.
 **Fundamental Law:** Cephalo must learn and update itself **by default without the user having to ask, prompt, or remind the agent**. The user should NEVER have to say "did you save this?" or "record this to Cephalo".
@@ -12,7 +12,7 @@ Cephalo is the user's permanent, long-term cognitive coprocessor across **ALL se
 ## 1. Grounding in User Profile & Verified Hardware
 Before answering questions concerning past decisions, preferences, device configurations, or domain-specific workflows:
 1. Always ground your reasoning in Cephalo:
-   - Consult the profile blueprint: `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain/USER_PROFILE.md`
+   - Consult the profile blueprint: `{{CEPHALO_DIR}}/USER_PROFILE.md`
    - Or run the hybrid vector search CLI: `cephalo search "<query>" --json`
 2. Follow the user's communication style and language preferences specified in `USER_PROFILE.md` (direct, technical, pragmatic, clean markdown, no fluff).
 
@@ -39,7 +39,7 @@ Before answering questions concerning past decisions, preferences, device config
 1. **Record into Cephalo Vector Memory immediately:**
    `cephalo record "<Clear, factual preference or decision>" --category "<category>" --source "agent"`
 2. **If it affects foundational identity, devices, or broad domain rules, update:**
-   `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain/USER_PROFILE.md`
+   `{{CEPHALO_DIR}}/USER_PROFILE.md`
 3. **If it establishes a repeatable domain capability, update or register a Specialty:**
    `cephalo specialty create "<slug>" --project "<project>" ...`
 
@@ -52,10 +52,10 @@ Cephalo operates a two-tier safety net so nothing is ever dropped:
 
 ---
 
-## 5. Continuous GitHub Synchronization
+## 5. Local Git Synchronization
 When Cephalo code, blueprints, or documentation are modified, ensure they are synchronized with the local git repository:
-```powershell
-Set-Location "C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain"
+```bash
+cd "{{CEPHALO_DIR}}"
 git add .
 git commit -m "<Clear, descriptive commit message>"
 ```
