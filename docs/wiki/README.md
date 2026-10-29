@@ -11,8 +11,8 @@ Welcome to the offline, sovereign architecture documentation and codemap for **C
 - [4. Multi-Tier Zero-Leak Privacy Shield](SECURITY_PRIVACY.md)
 
 ## Codebase Summary
-- **Active Python Modules:** 16 core modules
-- **Total Source Lines:** 8,332 LOC
+- **Active Python Modules:** 18 core modules
+- **Total Source Lines:** 10,669 LOC
 - **Vector Storage:** Embedded LanceDB Columnar (Apache Arrow)
 - **Embeddings:** FastEmbed ONNX Runtime (Qwen 1024d Local)
 - **Subprocess Discipline:** Strictly enforces `CREATE_NO_WINDOW` (`0x08000000`) on Windows

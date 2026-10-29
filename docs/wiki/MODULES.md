@@ -22,7 +22,7 @@ Universal lifecycle processor for agent harnesses (Google Antigravity, Claude Co
 ---
 
 ## [`brain.py`](brain.py)
-**Lines of Code:** 1310 | **Imports:** 9
+**Lines of Code:** 1387 | **Imports:** 9
 
 > Cephalo - Unified Agent & User Memory Interface (brain.py)
 ==========================================================
@@ -45,7 +45,7 @@ Universal CLI entrypoint for humans and AI agents (Antigravity, Claude Code, Cod
 ---
 
 ## [`cephalo_daemon.py`](cephalo_daemon.py)
-**Lines of Code:** 451 | **Imports:** 12
+**Lines of Code:** 474 | **Imports:** 12
 
 > Cephalo Always-On Background Daemon (cephalo_daemon.py)
 ======================================================
@@ -130,7 +130,7 @@ using a dedicated App Password (e.g. Gmail / Outlook / custom domain).
 ---
 
 ## [`embedding_pipeline.py`](embedding_pipeline.py)
-**Lines of Code:** 971 | **Imports:** 14
+**Lines of Code:** 1087 | **Imports:** 14
 
 > Personal Second Brain - Clean, Production-Ready Embedding & Vector Storage Pipeline
 ===================================================================================
@@ -162,11 +162,12 @@ Features:
   **Methods:** `__init__()`, `mode()`, `model_name()`, `dimension()`, `_embed_via_sdk()`, `_embed_via_rest()`
 - **`LanceDBStore`**
   *Manages storage and vector retrieval using local LanceDB tables.*
-  **Methods:** `__init__()`, `_get_schema()`, `_get_or_create_table()`, `get_existing_ids()`, `add_records()`, `ensure_fts_index()`
+  **Methods:** `__init__()`, `_get_schema()`, `_ensure_columns_exist()`, `_get_or_create_table()`, `deprecate_record()`, `get_existing_ids()`
 - **`EmbeddingPipeline`**
   *Coordinates Sanitization -> Embedding -> LanceDB Storage.*
   **Methods:** `__init__()`, `ingest_prompt()`, `sync_from_jsonl()`, `search()`
 ### Key Functions
+- `def extract_tags(text)` — *Extracts inline #tags and hierarchical #tag/subtags from text (e.g. #cinema/hdr, #backend).*
 - `def calculate_shannon_entropy(data)` — *Calculates the Shannon entropy of a string.*
 - `def is_code_line(line)` — *Detects if a line is likely source code or terminal syntax rather than natural prose.*
 - `def create_embedder(mode, model, dimension, api_key)` — *Factory creating either FastEmbed (Local) or Google Cloud embedder.*
@@ -280,8 +281,26 @@ Provides automated knowledge synthesis and specialty generation for:
 
 ---
 
+## [`symbol_extractor.py`](symbol_extractor.py)
+**Lines of Code:** 485 | **Imports:** 10
+
+> Cephalo - AST Code Symbol & Definition Indexer (symbol_extractor.py)
+===================================================================
+Token-efficient Abstract Syntax Tree (AST) code symbol search engine inspired
+by XERJ's 'def' primitive. Replaces wasteful full-file grepping by parsing source
+code into AST nodes and returning exact definitions, line numbers, and signatures.
+
+### Classes
+- **`SymbolDefinition`**
+  **Methods:** `to_dict()`, `to_markdown()`
+- **`CodeSymbolIndexer`**
+  *Traverses codebases, parses AST nodes, and queries symbols and definitions.*
+  **Methods:** `__init__()`, `find_definitions()`, `extract_symbols_from_file()`, `_walk_source_files()`, `_extract_tree_sitter_symbols()`, `_extract_python_ast_symbols()`
+
+---
+
 ## [`web_search.py`](web_search.py)
-**Lines of Code:** 976 | **Imports:** 17
+**Lines of Code:** 1155 | **Imports:** 17
 
 > Cephalo - Web Search & Sovereign SERP Intelligence Engine (web_search.py)
 ========================================================================
@@ -297,15 +316,43 @@ extraction, and interactive generative UI rendering.
   **Methods:** `__init__()`, `handle_starttag()`, `handle_endtag()`, `handle_data()`, `get_text()`
 - **`WebSearchEngine`**
   *Orchestrates web search, Google-style SERP synthesis, and content extraction.*
-  **Methods:** `__init__()`, `_resolve_exa_key()`, `_init_cache_db()`, `_get_from_cache()`, `_save_to_cache()`, `search_serp()`
+  **Methods:** `__init__()`, `_resolve_exa_key()`, `_init_cache_db()`, `_get_page_from_cache()`, `_save_page_to_cache()`, `_get_from_cache()`
 ### Key Functions
 - `def is_deep_discussion_url(url)` — *Validates whether a URL points to an actual discussion thread, forum topic,*
 - `def select_community_targets(query)` — *Selects high-relevance community and forum domains dynamically based on query topic.*
 
 ---
 
+## [`webhook_server.py`](webhook_server.py)
+**Lines of Code:** 341 | **Imports:** 13
+
+> Cephalo Multi-Channel Quick Capture & Webhook Ingress Gateway (webhook_server.py)
+================================================================================
+Lightweight, local-first HTTP webhook server and ingestion bridge.
+Allows instant quick-capture from:
+- iOS Shortcuts / Android Tasker / curl
+- Browser extensions / Raycast scripts
+- Telegram Bot (polling or webhook)
+- Local scripts and external services
+
+### Classes
+- **`WebhookRequestHandler`**
+  *Handles incoming HTTP webhooks, REST ingest calls, and health checks.*
+  **Methods:** `_send_cors_headers()`, `do_OPTIONS()`, `_authenticate()`, `do_GET()`, `do_POST()`, `log_message()`
+- **`WebhookServer`**
+  *Manages the lifecycle of the quick-capture HTTP ingress server.*
+  **Methods:** `__init__()`, `start()`, `stop()`
+- **`TelegramIngestBot`**
+  *Lightweight zero-dependency Telegram bot polling worker for remote thought capture.*
+  **Methods:** `__init__()`, `_api_call()`, `_poll_loop()`, `start()`, `stop()`
+### Key Functions
+- `def get_pipeline()` — **
+- `def send_quick_memory(text, category, host, port)` — *Helper for CLI to post a note to the local webhook gateway.*
+
+---
+
 ## [`wiki_generator.py`](wiki_generator.py)
-**Lines of Code:** 300 | **Imports:** 6
+**Lines of Code:** 1416 | **Imports:** 9
 
 > Cephalo - Sovereign Codebase Wiki & Codemap Engine (wiki_generator.py)
 =====================================================================
@@ -319,5 +366,12 @@ for Cephalo and user projects without leaking proprietary code to third-party cl
 - **`WikiGenerator`**
   *Synthesizes structured documentation, codemaps, and Mermaid charts.*
   **Methods:** `__init__()`, `generate_all()`, `_scan_modules()`, `_write_index()`, `_write_architecture()`, `_write_modules()`
+- **`DeepWikiServerHandler`**
+  *Dynamic HTTP handler for DeepWiki documentation, timeline feed, and quick capture.*
+  **Methods:** `__init__()`, `_send_cors()`, `do_OPTIONS()`, `do_GET()`, `do_POST()`
+### Key Functions
+- `def get_timeline_records(limit)` — *Reads memories from prompts.jsonl in reverse-chronological order.*
+- `def get_heatmap_data()` — *Computes daily ingestion counts over the past 365 days.*
+- `def run_deepwiki_server(port, open_browser)` — *Runs the integrated Sovereign DeepWiki & Timeline dashboard server.*
 
 ---
