@@ -363,151 +363,178 @@ def cmd_harvest(args) -> None:
     from auto_harvest import run_standalone_harvest
     run_standalone_harvest(transcript_path=args.transcript)
 
+def _handle_specialty_list(mgr, args) -> None:
+    items = mgr.list_specialties(project=args.project)
+    if getattr(args, "json", False):
+        print(json.dumps(items, indent=2, ensure_ascii=False))
+        return
+    if not items:
+        print(f"No specialties found{f' for project {args.project}' if args.project else ''}.")
+        return
+    print("=" * 65)
+    print("  PERSONAL SECOND BRAIN - ACTIVE SPECIALTIES")
+    print("=" * 65)
+    for s in items:
+        print(f"  • [{s.get('project')}] {s.get('name')} (id: {s.get('id')})")
+        if s.get("github_repos"):
+            print(f"    GitHub Repos: {len(s.get('github_repos'))} curated")
+        if s.get("key_takeaways"):
+            print(f"    Takeaways:    {len(s.get('key_takeaways'))} core principles")
+    print("=" * 65)
+
+
+def _handle_specialty_read(mgr, args) -> None:
+    data = mgr.get_specialty(args.name, project=args.project)
+    if not data:
+        if getattr(args, "json", False):
+            print(json.dumps({"error": f"Specialty '{args.name}' not found"}, indent=2))
+        else:
+            print(f"Error: Specialty '{args.name}' not found.")
+        return
+    if getattr(args, "json", False):
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return
+    print(data["knowledge_content"])
+
+
+def _handle_specialty_create(mgr, args) -> None:
+    repos = []
+    if getattr(args, "repos", None):
+        try:
+            repos = json.loads(args.repos)
+        except Exception:
+            pass
+    takeaways = [t.strip() for t in args.takeaways.split(";")] if getattr(args, "takeaways", None) else []
+    prefs = [p.strip() for p in args.preferences.split(",")] if getattr(args, "preferences", None) else []
+    fund = args.fundamentals or f"Core verified fundamentals for {args.name}."
+
+    result = mgr.create_specialty(
+        name=args.name,
+        project=args.project,
+        fundamentals=fund,
+        github_repos=repos,
+        key_takeaways=takeaways,
+        user_preferences=prefs,
+        sync_to_vector_db=True,
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return
+    print(f"[+] Created and Indexed Specialty: '{args.name}' under Project: '{args.project}'")
+    print(f"    Manifest:  {result['path']}\\manifest.json")
+    print(f"    Knowledge: {result['knowledge_path']}")
+
+
+def _handle_specialty_edit(mgr, args) -> None:
+    res = mgr.edit_specialty(
+        name=args.name,
+        project=args.project,
+        fundamentals=getattr(args, "fundamentals", None),
+        notes=getattr(args, "notes", None),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    print(f"[+] Updated Specialty '{args.name}'.")
+
+
+def _handle_specialty_delete(mgr, args) -> None:
+    confirmed = args.confirm
+    if not confirmed and sys.stdin.isatty():
+        ans = input(f"Are you sure you want to delete specialty '{args.name}'? Type 'yes' to confirm: ")
+        confirmed = (ans.strip().lower() == "yes")
+
+    try:
+        mgr.delete_specialty(args.name, project=args.project, confirmed=confirmed)
+        if getattr(args, "json", False):
+            print(json.dumps({"deleted": True, "specialty": args.name}, indent=2))
+        else:
+            print(f"[+] Successfully deleted specialty '{args.name}'.")
+    except PermissionError as pe:
+        if getattr(args, "json", False):
+            print(json.dumps({"error": str(pe)}, indent=2))
+        else:
+            print(f"Error: {pe}")
+
+
+def _handle_specialty_auto_create(mgr, args) -> None:
+    prefs = [p.strip() for p in args.preferences.split(",")] if getattr(args, "preferences", None) else None
+    res = mgr.auto_create_specialty(topic=args.topic, project=args.project, user_preferences=prefs)
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    if res.get("already_exists"):
+        print(f"[i] Specialty '{res['manifest'].get('name')}' already exists in project '{res['manifest'].get('project')}'.")
+        print(f"    Path: {res['path']}")
+    else:
+        print(f"[+] Autonomously Synthesized & Created Specialty: '{res['manifest'].get('name')}' under Project: '{res['manifest'].get('project')}'")
+        print(f"    Manifest:  {res['path']}\\manifest.json")
+        print(f"    Knowledge: {res['knowledge_path']}")
+
+
+def _handle_specialty_discover(mgr, args) -> None:
+    content = getattr(args, "text", None) or ""
+    if getattr(args, "file", None):
+        fpath = Path(args.file)
+        if fpath.exists():
+            content += "\n" + fpath.read_text(encoding="utf-8")
+    if not content.strip():
+        print("Error: Provide --text or --file to auto-discover technologies.")
+        return
+    results = mgr.auto_discover_and_create(text_or_items=content, project=args.project)
+    if getattr(args, "json", False):
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+        return
+    print(f"[+] Auto-Discovery Complete: Processed {len(results)} technologies.")
+    for r in results:
+        status = "Created" if r.get("created") else "Already Exists"
+        print(f"  • [{status}] {r['manifest'].get('name')} ({r['manifest'].get('slug')}) in '{r['manifest'].get('project')}'")
+
+
+def _handle_specialty_research(mgr, args) -> None:
+    res = mgr.research_and_create_specialty(
+        topic=args.topic,
+        project=args.project,
+        subtopics=getattr(args, "subtopics", None),
+        notes=getattr(args, "notes", None),
+        sync_to_vector_db=True,
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        return
+    synth = res["synthesized"]
+    print("=" * 70)
+    print(f"[+] Researched & Created Specialty: '{synth['name']}' in Project: '{synth['project']}'")
+    print("=" * 70)
+    print(f"Manifest:   {res['path']}\\manifest.json")
+    print(f"Knowledge:  {res['knowledge_path']}")
+    print(f"Subtopics:  {', '.join(synth.get('subtopics', []))}")
+
+
 def cmd_specialty(args) -> None:
     """Handles CRUD operations for the Specialties domain layer."""
     from specialties_manager import SpecialtiesManager
     mgr = SpecialtiesManager()
     action = getattr(args, "specialty_action", None) or "list"
 
-    if action == "list":
-        items = mgr.list_specialties(project=args.project)
-        if args.json:
-            print(json.dumps(items, indent=2, ensure_ascii=False))
-            return
-        if not items:
-            print(f"No specialties found{f' for project {args.project}' if args.project else ''}.")
-            return
-        print("=" * 65)
-        print("  PERSONAL SECOND BRAIN - ACTIVE SPECIALTIES")
-        print("=" * 65)
-        for s in items:
-            print(f"  • [{s.get('project')}] {s.get('name')} (id: {s.get('id')})")
-            if s.get("github_repos"):
-                print(f"    GitHub Repos: {len(s.get('github_repos'))} curated")
-            if s.get("key_takeaways"):
-                print(f"    Takeaways:    {len(s.get('key_takeaways'))} core principles")
-        print("=" * 65)
+    handlers = {
+        "list": _handle_specialty_list,
+        "read": _handle_specialty_read,
+        "create": _handle_specialty_create,
+        "edit": _handle_specialty_edit,
+        "delete": _handle_specialty_delete,
+        "auto-create": _handle_specialty_auto_create,
+        "auto": _handle_specialty_auto_create,
+        "auto-discover": _handle_specialty_discover,
+        "discover": _handle_specialty_discover,
+        "research": _handle_specialty_research,
+    }
 
-    elif action == "read":
-        data = mgr.get_specialty(args.name, project=args.project)
-        if not data:
-            if args.json:
-                print(json.dumps({"error": f"Specialty '{args.name}' not found"}, indent=2))
-            else:
-                print(f"Error: Specialty '{args.name}' not found.")
-            return
-        if args.json:
-            print(json.dumps(data, indent=2, ensure_ascii=False))
-            return
-        print(data["knowledge_content"])
-
-    elif action == "create":
-        repos = []
-        if getattr(args, "repos", None):
-            try:
-                repos = json.loads(args.repos)
-            except Exception:
-                pass
-        takeaways = [t.strip() for t in args.takeaways.split(";")] if getattr(args, "takeaways", None) else []
-        prefs = [p.strip() for p in args.preferences.split(",")] if getattr(args, "preferences", None) else []
-        fund = args.fundamentals or f"Core verified fundamentals for {args.name}."
-
-        result = mgr.create_specialty(
-            name=args.name,
-            project=args.project,
-            fundamentals=fund,
-            github_repos=repos,
-            key_takeaways=takeaways,
-            user_preferences=prefs,
-            sync_to_vector_db=True,
-        )
-        if args.json:
-            print(json.dumps(result, indent=2, ensure_ascii=False))
-            return
-        print(f"[+] Created and Indexed Specialty: '{args.name}' under Project: '{args.project}'")
-        print(f"    Manifest:  {result['path']}\\manifest.json")
-        print(f"    Knowledge: {result['knowledge_path']}")
-
-    elif action == "edit":
-        res = mgr.edit_specialty(
-            name=args.name,
-            project=args.project,
-            fundamentals=getattr(args, "fundamentals", None),
-            notes=getattr(args, "notes", None),
-        )
-        if args.json:
-            print(json.dumps(res, indent=2, ensure_ascii=False))
-            return
-        print(f"[+] Updated Specialty '{args.name}'.")
-
-    elif action == "delete":
-        confirmed = args.confirm
-        if not confirmed and sys.stdin.isatty():
-            ans = input(f"Are you sure you want to delete specialty '{args.name}'? Type 'yes' to confirm: ")
-            confirmed = (ans.strip().lower() == "yes")
-
-        try:
-            mgr.delete_specialty(args.name, project=args.project, confirmed=confirmed)
-            if args.json:
-                print(json.dumps({"deleted": True, "specialty": args.name}, indent=2))
-            else:
-                print(f"[+] Successfully deleted specialty '{args.name}'.")
-        except PermissionError as pe:
-            if args.json:
-                print(json.dumps({"error": str(pe)}, indent=2))
-            else:
-                print(f"Error: {pe}")
-
-    elif action in ("auto-create", "auto"):
-        prefs = [p.strip() for p in args.preferences.split(",")] if getattr(args, "preferences", None) else None
-        res = mgr.auto_create_specialty(topic=args.topic, project=args.project, user_preferences=prefs)
-        if args.json:
-            print(json.dumps(res, indent=2, ensure_ascii=False))
-            return
-        if res.get("already_exists"):
-            print(f"[i] Specialty '{res['manifest'].get('name')}' already exists in project '{res['manifest'].get('project')}'.")
-            print(f"    Path: {res['path']}")
-        else:
-            print(f"[+] Autonomously Synthesized & Created Specialty: '{res['manifest'].get('name')}' under Project: '{res['manifest'].get('project')}'")
-            print(f"    Manifest:  {res['path']}\\manifest.json")
-            print(f"    Knowledge: {res['knowledge_path']}")
-
-    elif action in ("auto-discover", "discover"):
-        content = getattr(args, "text", None) or ""
-        if getattr(args, "file", None):
-            fpath = Path(args.file)
-            if fpath.exists():
-                content += "\n" + fpath.read_text(encoding="utf-8")
-        if not content.strip():
-            print("Error: Provide --text or --file to auto-discover technologies.")
-            return
-        results = mgr.auto_discover_and_create(text_or_items=content, project=args.project)
-        if args.json:
-            print(json.dumps(results, indent=2, ensure_ascii=False))
-            return
-        print(f"[+] Auto-Discovery Complete: Processed {len(results)} technologies.")
-        for r in results:
-            status = "Created" if r.get("created") else "Already Exists"
-            print(f"  • [{status}] {r['manifest'].get('name')} ({r['manifest'].get('slug')}) in '{r['manifest'].get('project')}'")
-
-    elif action == "research":
-        res = mgr.research_and_create_specialty(
-            topic=args.topic,
-            project=args.project,
-            subtopics=getattr(args, "subtopics", None),
-            notes=getattr(args, "notes", None),
-            sync_to_vector_db=True,
-        )
-        if args.json:
-            print(json.dumps(res, indent=2, ensure_ascii=False))
-            return
-        synth = res["synthesized"]
-        print("=" * 70)
-        print(f"[+] Researched & Created Specialty: '{synth['name']}' in Project: '{synth['project']}'")
-        print("=" * 70)
-        print(f"Manifest:   {res['path']}\\manifest.json")
-        print(f"Knowledge:  {res['knowledge_path']}")
-        print(f"Subtopics:  {', '.join(synth.get('subtopics', []))}")
+    handler = handlers.get(action)
+    if handler:
+        handler(mgr, args)
+    else:
+        print(f"Unknown specialty action: {action}")
         print(f"Repositories ({len(synth.get('github_repos', []))}):")
         for r in synth.get("github_repos", []):
             print(f"  * {r['name']} (Stars: {r['stars']}): {r['description'][:80]}...")
