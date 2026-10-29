@@ -222,6 +222,63 @@ class DeepResearchEngine:
 
         return snippets[:max_snippets]
 
+    def mine_reference_patterns(self, repos: List[Dict[str, Any]], max_patterns: int = 6) -> List[Dict[str, Any]]:
+        """
+        Inspects top open-source repositories and extracts AST symbol signatures
+        using Cephalo's CodeSymbolIndexer (Reference Coding engine inspired by XERJ).
+        """
+        from symbol_extractor import CodeSymbolIndexer
+        indexer = CodeSymbolIndexer()
+        patterns: List[Dict[str, Any]] = []
+
+        candidate_files = [
+            "src/index.ts",
+            "index.ts",
+            "src/index.js",
+            "index.js",
+            "src/lib.rs",
+            "src/main.rs",
+            "main.go",
+            "client.py",
+            "core.py",
+            "api.py",
+            "__init__.py",
+        ]
+
+        for repo in repos:
+            if len(patterns) >= max_patterns:
+                break
+            repo_name = repo.get("name", "")
+            if not repo_name or "/" not in repo_name or repo_name.startswith("awesome-"):
+                continue
+
+            for cand in candidate_files:
+                if len(patterns) >= max_patterns:
+                    break
+                raw_url = f"https://raw.githubusercontent.com/{repo_name}/HEAD/{cand}"
+                try:
+                    req = urllib.request.Request(raw_url, headers={"User-Agent": "Cephalo-Reference-Coder/1.0"})
+                    with urllib.request.urlopen(req, timeout=3) as resp:
+                        if resp.status == 200:
+                            content_bytes = resp.read(65536)  # Read up to 64KB for speed and token efficiency
+                            ext = os.path.splitext(cand)[1].lower()
+                            symbols = indexer.extract_symbols_from_content(content_bytes, cand, ext=ext)
+                            for s in symbols:
+                                if s.kind in ("class", "interface", "type", "struct") or (s.kind == "function" and not s.name.startswith("_")):
+                                    patterns.append({
+                                        "repo": repo_name,
+                                        "file": cand,
+                                        "symbol": s.name,
+                                        "kind": s.kind,
+                                        "signature": s.signature,
+                                    })
+                                    if len(patterns) >= max_patterns:
+                                        break
+                except Exception:
+                    continue
+
+        return patterns
+
     def decompose_subtopics(self, topic: str, user_subtopics: Optional[List[str]] = None) -> List[str]:
         """Decomposes a broad topic into granular architectural subtopics."""
         if user_subtopics:
@@ -298,6 +355,7 @@ class DeepResearchEngine:
         # 2. Live Web & GitHub Investigation
         curated_repos = self.search_curated_github_repos(topic)
         industry_snippets = self.search_industry_best_practices(topic)
+        reference_patterns = self.mine_reference_patterns(curated_repos)
 
         # 3. Detect UI and Media contexts
         is_ui_topic = any(w in topic.lower() for w in self.UI_KEYWORDS)
@@ -327,6 +385,17 @@ class DeepResearchEngine:
                 "### Industry Standards & Production Evidence\n"
                 + "\n".join([f"- {snip}" for snip in industry_snippets[:3]])
             )
+
+        if reference_patterns:
+            pattern_lines = [
+                "### Reference Coding Patterns (AST Signatures from Top Repositories)\n"
+                "Concrete AST interfaces, types, and function contracts mined from battle-tested open-source codebases:"
+            ]
+            for p in reference_patterns[:6]:
+                pattern_lines.append(
+                    f"- **`{p['symbol']}`** (`{p['kind']}`) in [{p['repo']}:{p['file']}](https://github.com/{p['repo']}/blob/main/{p['file']})\n  ```\n  {p['signature']}\n  ```"
+                )
+            fundamentals_blocks.append("\n".join(pattern_lines))
 
         if is_ui_topic:
             fundamentals_blocks.append(
@@ -397,6 +466,7 @@ class DeepResearchEngine:
             "fundamentals": full_fundamentals,
             "key_takeaways": takeaways,
             "github_repos": curated_repos,
+            "reference_patterns": reference_patterns,
             "user_preferences": user_prefs,
             "tags": tags,
             "subtopics": resolved_subtopics,
