@@ -1,4 +1,0 @@
-$2924d888-ce63-4526-8bfd-ac07487286de²Œid ÿÿÿÿÿÿÿÿÿ*string085vector ÿÿÿÿÿÿÿÿÿ*fixed_size_list:float:102408"content ÿÿÿÿÿÿÿÿÿ*string08#category ÿÿÿÿÿÿÿÿÿ*string08!source ÿÿÿÿÿÿÿÿÿ*string08$	timestamp ÿÿÿÿÿÿÿÿÿ*string08*embedding_model ÿÿÿÿÿÿÿÿÿ*string08#	dimension ÿÿÿÿÿÿÿÿÿ*int3208+extracted_intent ÿÿÿÿÿÿÿÿÿ*string08'learned_traits	 ÿÿÿÿÿÿÿÿÿ*list08item
- 	*string08"	sanitized ÿÿÿÿÿÿÿÿÿ*bool08tags ÿÿÿÿÿÿÿÿÿ*list08item *string08%
-supersedes ÿÿÿÿÿÿÿÿÿ*string08#
-relates_to ÿÿÿÿÿÿÿÿÿ*list08item *string08&is_deprecated ÿÿÿÿÿÿÿÿÿ*bool08

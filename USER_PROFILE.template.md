@@ -16,6 +16,8 @@
 - **Automated Privacy Filtering:** PII redaction and secret stripping must execute deterministically and locally, without relying on manual vigilance.
 - **Incremental & Practical Architecture:** Tangible, working building blocks over over-engineered, theoretical monoliths.
 - **Agent-Agnostic Portability:** Cephalo must remain fully operable by any AI agent harness via standard CLI commands (`brain.py`) and protocol files (`AGENTS.md`, `CLAUDE.md`).
+- **Adaptive Non-Destructive Integration:** Cephalo integrates into your existing workflows without overwriting custom rules, global dotfiles, or shell environments. Delimited managed blocks and non-destructive merges ensure sovereign coexistence.
+- **Local Sovereignty (No Unwanted Git Sync):** Cephalo is an installed personal tool, not a project that commits or pushes to external repositories in the background. Your local memories, specialties, and notes stay strictly on your local machine.
 - **Productivity & Life Automation:** Automate repetitive research, memory management, and context recall so human time focuses on creative, high-leverage tasks.
 
 ---

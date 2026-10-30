@@ -12,6 +12,8 @@ data/*.json
 data/chromium_profile/
 data/serp_cache/
 data/search_cache.db
+**/data/
+**/data/**
 
 # --- Personal User Profile Blueprint ---
 USER_PROFILE.md
