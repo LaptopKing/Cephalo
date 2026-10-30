@@ -12,9 +12,7 @@ Core Duties:
 2. Cross-Harness Transcript Harvester:
    - Scans conversation transcripts from Antigravity, Claude, and local agent logs.
    - Ingests all user prompts and extracts preferences & negative constraints.
-3. Git Synchronization:
-   - Automatically synchronizes newly synthesized knowledge to GitHub (`LaptopKing/Cephalo`).
-4. Windows Task Scheduler & Background Process Management:
+3. Windows Task Scheduler & Background Process Management:
    - Supports detached background execution (`cephalo daemon start/stop/status`).
    - Supports 1-click Windows Scheduled Task registration (`cephalo daemon install-task`).
 """
@@ -105,7 +103,7 @@ class CephaloDaemon:
             pass
 
     def execute_cycle(self) -> Dict[str, Any]:
-        """Runs one unified autonomous cycle: Learn -> Harvest -> Git Sync."""
+        """Runs one unified autonomous cycle: Learn -> Harvest."""
         logger.info("Executing autonomous background cycle...")
         cycle_result: Dict[str, Any] = {"success": True}
 
@@ -127,36 +125,6 @@ class CephaloDaemon:
         except Exception as e:
             logger.debug(f"Transcript harvest step skipped/failed: {e}")
             cycle_result["harvest_error"] = str(e)
-
-        # 3. Auto-commit locally (safe version history) and optionally push
-        try:
-            status_proc = subprocess.run(
-                ["git", "-C", str(SCRIPT_DIR), "status", "-s"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                creationflags=NO_WINDOW_FLAG,
-            )
-            git_changes = status_proc.stdout.strip()
-            if git_changes:
-                logger.info("Detected local Cephalo changes. Staging and committing locally...")
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "add", "."], capture_output=True, check=True, timeout=15, creationflags=NO_WINDOW_FLAG)
-                commit_msg = f"chore(auto-sync): autonomous continuous learning cycle [{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}]"
-                subprocess.run(["git", "-C", str(SCRIPT_DIR), "commit", "-m", commit_msg], capture_output=True, check=True, timeout=15, creationflags=NO_WINDOW_FLAG)
-
-                # Push is strictly opt-in via CEPHALO_AUTO_PUSH=1 or --auto-push flag
-                auto_push_enabled = os.environ.get("CEPHALO_AUTO_PUSH", "0").lower() in ("1", "true", "yes")
-                if auto_push_enabled:
-                    subprocess.run(["git", "-C", str(SCRIPT_DIR), "push", "origin", "main"], capture_output=True, check=True, timeout=25, creationflags=NO_WINDOW_FLAG)
-                    logger.info("Successfully pushed updates to remote origin.")
-                    cycle_result["git_pushed"] = True
-                else:
-                    cycle_result["git_pushed"] = False
-            else:
-                cycle_result["git_pushed"] = False
-        except Exception as e:
-            logger.debug(f"Git auto-sync notice: {e}")
-            cycle_result["git_error"] = str(e)
 
         self._update_status(cycle_result)
         return cycle_result
@@ -466,8 +434,8 @@ def main():
                 if "learning" in last_c:
                     l = last_c["learning"]
                     print(f"Last Learning:  {l.get('scanned_projects_count', 0)} projects, {len(l.get('discovered_technologies', []))} stacks")
-                if "git_pushed" in last_c:
-                    print(f"GitHub Sync:    {'Pushed' if last_c['git_pushed'] else 'Up to date'}")
+                if "harvest" in last_c:
+                    print(f"Last Harvest:   {last_c.get('harvest', 'N/A')}")
             print("=" * 65)
     elif args.command == "install-task":
         install_windows_task()
