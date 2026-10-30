@@ -9,7 +9,16 @@ Cephalo is the user's permanent, long-term cognitive coprocessor across **ALL se
 
 ---
 
-## 1. Grounding in User Profile & Verified Hardware
+## 1. Daily Digest Proactive Offering Policy
+Once per day (on the first turn of the day or session start), the agent should check if a daily cognitive digest is ready and offer it in a respectful, concise 1-2 line status bar:
+- Run or check `cephalo digest --check-offer`.
+- If milestones exist, present a polite 1-2 line offer:
+  `> 🌅 **Daily Digest Available:** X events logged today. Would you like to review today's visual cognitive velocity or open the DeepWiki 24h scrubber?`
+- Do NOT dump full reports unprompted. If the user moves to other coding tasks, address their question immediately without repeating the offer.
+
+---
+
+## 2. Grounding in User Profile & Verified Hardware
 Before answering questions concerning past decisions, preferences, device configurations, or domain-specific workflows:
 1. Always ground your reasoning in Cephalo:
    - Consult the profile blueprint: `{{CEPHALO_DIR}}/USER_PROFILE.md`

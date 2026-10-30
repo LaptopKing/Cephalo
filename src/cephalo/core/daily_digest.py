@@ -276,3 +276,56 @@ class DailyDigestGenerator:
         ])
 
         return "\n".join(md)
+
+
+DIGEST_STATE_FILE = DATA_DIR / "daily_digest_state.json"
+
+
+def check_and_offer_daily_digest(
+    date_str: Optional[str] = None,
+    state_file: Optional[Path] = None,
+    mark_offered: bool = True,
+) -> Optional[str]:
+    """
+    Checks if a daily digest is available and should be offered to the user.
+    Respects user attention: offers at most ONCE per day in a respectful, concise 2-line format.
+    """
+    target_date = date_str or datetime.date.today().isoformat()
+    sf = state_file or DIGEST_STATE_FILE
+
+    # Check state
+    state = {}
+    if sf.exists():
+        try:
+            state = json.loads(sf.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
+
+    if state.get("last_offered_date") == target_date:
+        return None  # Already offered today
+
+    generator = DailyDigestGenerator()
+    digest = generator.generate_digest(target_date)
+
+    total_events = digest.get("total_events", 0)
+    if total_events < 2:
+        return None  # Insufficient activity to warrant an offer
+
+    # Update state
+    if mark_offered:
+        state["last_offered_date"] = target_date
+        state["last_offered_at"] = datetime.datetime.now().isoformat()
+        try:
+            sf.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    prompts_cnt = digest.get("prompts_count", 0)
+    screens_cnt = digest.get("screen_frames_count", 0)
+    hours_cnt = digest.get("active_hours_count", 1)
+
+    return (
+        f"> 🌅 **Daily Digest Available:** `{total_events} events` "
+        f"({prompts_cnt} milestones, {screens_cnt} screen frames) logged today across `{hours_cnt} active hours`.\n"
+        f"> *Would you like to review today's visual cognitive velocity or open the DeepWiki 24h scrubber?*"
+    )

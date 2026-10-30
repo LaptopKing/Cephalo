@@ -1351,7 +1351,15 @@ def cmd_screen(args) -> None:
 
 def cmd_digest(args) -> None:
     """Generates a visual, anti-AI-slop daily cognitive executive digest."""
-    from cephalo.core.daily_digest import DailyDigestGenerator
+    from cephalo.core.daily_digest import DailyDigestGenerator, check_and_offer_daily_digest
+
+    if getattr(args, "check_offer", False):
+        offer = check_and_offer_daily_digest(date_str=getattr(args, "date", None))
+        if args.json:
+            print(json.dumps({"offer_available": offer is not None, "offer_text": offer}, indent=2))
+        elif offer:
+            print(offer)
+        return
 
     target_date = getattr(args, "date", None)
     gen = DailyDigestGenerator()
@@ -1655,6 +1663,7 @@ def main():
     digest_p = subparsers.add_parser("digest", parents=[shared_parser], help="Generate visual, anti-AI-slop daily cognitive executive digest.")
     digest_p.add_argument("--today", action="store_true", help="Generate digest for today.")
     digest_p.add_argument("--date", type=str, default=None, help="Target date in YYYY-MM-DD format.")
+    digest_p.add_argument("--check-offer", action="store_true", help="Check if daily digest is available and should be offered.")
 
     args = parser.parse_args()
 

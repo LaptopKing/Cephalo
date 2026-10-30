@@ -126,6 +126,17 @@ class CephaloDaemon:
             logger.debug(f"Transcript harvest step skipped/failed: {e}")
             cycle_result["harvest_error"] = str(e)
 
+        # 3. Autonomous Screen Perceptual Delta Evaluation (Zero-bloat, delta-gated)
+        try:
+            from cephalo.services.screen_recorder import ScreenMemoryEngine
+            screen_engine = ScreenMemoryEngine()
+            screen_report = screen_engine.capture_step(force=False)
+            cycle_result["screen"] = screen_report.get("status", "unknown")
+            if screen_report.get("status") == "captured":
+                logger.info(f"Captured screen keyframe {screen_report.get('frame_id')} (delta: {screen_report.get('delta')})")
+        except Exception as e:
+            logger.debug(f"Screen capture step skipped: {e}")
+
         self._update_status(cycle_result)
         return cycle_result
 
