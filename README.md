@@ -62,11 +62,20 @@ curl -fsSL https://raw.githubusercontent.com/LaptopKing/Cephalo/main/install.sh 
 ```bash
 git clone https://github.com/LaptopKing/Cephalo.git
 cd Cephalo
-.\install.ps1    # On Windows
-./install.sh     # On Linux / macOS
+.\install.ps1    # On Windows (Default: System Python)
+./install.sh     # On Linux / macOS / WSL
 ```
 
-> **Zero-Friction Agent Setup:** The installer automatically detects and provisions global agent harness policies (e.g. for **Google Antigravity** at `~/.gemini/config/rules/cephalo_second_brain.md`) so that your agents immediately recognize, query, and continuously learn from Cephalo across all sessions without any manual configuration.
+### Isolated Virtual Environment (Recommended: Zero Host Pollution)
+To prevent heavy ML dependencies (LanceDB, ONNX, FastEmbed) from touching your system Python:
+```powershell
+.\install.ps1 -UseVenv  # Creates isolated .venv and configures shims
+```
+```bash
+./install.sh --venv     # Creates isolated .venv on Linux / macOS / WSL
+```
+
+> **Adaptive & Non-Destructive Invariant:** Cephalo respects existing user configurations and dotfiles. It never overwrites your global `CLAUDE.md`, shell configs, or hook registries. Instead, it injects scoped `<!-- CEPHALO MANAGED BLOCK START/END -->` blocks, creates timestamped `.bak` files, and keeps your private memories strictly local. Cephalo operates purely as an installed tool—background daemons never auto-commit or push to Git.
 
 ---
 
@@ -316,6 +325,7 @@ Cephalo stands on the shoulders of giants in the open-source community. Whenever
 - **[Memos](https://github.com/usememos/memos)** — Open-source, privacy-first knowledge-base service inspiring Cephalo's 52-week activity heatmap, interactive reverse-chronological memory stream, inline tag taxonomy, and multi-channel quick capture gateway.
 - **[XERJ](https://github.com/xerj-org/xerj)** — High-velocity AI search engine and MCP server inspiring our token-efficient AST symbol search (`cephalo def`) and reference coding engine.
 - **[Tree-sitter](https://github.com/tree-sitter/tree-sitter)** — Incremental parsing system providing blazing fast, memory-safe AST cursors across multi-language codebases without full-file overhead.
+- **[code-refactoring-skill](https://github.com/MuhiminOsim/code-refactoring-skill)** by [@MuhiminOsim](https://github.com/MuhiminOsim) — Safe, behavior-preserving code refactoring patterns (Fowler, Clean Architecture, test-gated decomposition) used to modularize Cephalo into a clean PEP 518 package.
 
 ---
 
