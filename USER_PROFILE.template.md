@@ -19,6 +19,7 @@
 - **Adaptive Non-Destructive Integration:** Cephalo integrates into your existing workflows without overwriting custom rules, global dotfiles, or shell environments. Delimited managed blocks and non-destructive merges ensure sovereign coexistence.
 - **Non-Shallow Repository Grouping Invariant:** Avoid shallow root directory pollution. CLI runners belong in `bin/`, deployment/installation scripts in `scripts/`, documentation in `docs/`, and Python modules strictly in `src/cephalo/` with explicit package imports.
 - **Local Sovereignty (No Unwanted Git Sync):** Cephalo is an installed personal tool, not a project that commits or pushes to external repositories in the background. Your local memories, specialties, and notes stay strictly on your local machine.
+- **Token-Efficiency & Bounded-Recall Invariant (Anti-Context-Bloat):** Agents operating with Cephalo must strictly avoid dumping massive reference files into ongoing LLM context histories. Agents must NEVER call `read_file` on `USER_PROFILE.md` (~11,000 tokens) for routine recall or general tasks. Grounding queries must use targeted vector search (`cephalo search "<query>" --json`, ~120 tokens) or sectional extraction (`cephalo profile --section <name>`, ~300 tokens). Full profile reads are strictly reserved for explicit profile audits or edits requested by the user.
 - **Productivity & Life Automation:** Automate repetitive research, memory management, and context recall so human time focuses on creative, high-leverage tasks.
 
 ---

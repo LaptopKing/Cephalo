@@ -53,8 +53,38 @@ def get_pipeline(table_name: Optional[str] = None):
     return EmbeddingPipeline(embedder=embedder, db_path=DEFAULT_LANCEDB_DIR, table_name=table_name)
 
 
+def parse_profile_sections(content: str) -> List[Dict[str, Any]]:
+    """Splits USER_PROFILE.md into markdown sections delineated by '## '."""
+    sections = []
+    current_title = "Preamble"
+    current_lines: List[str] = []
+
+    for line in content.splitlines():
+        if line.startswith("## "):
+            if current_lines:
+                sec_text = "\n".join(current_lines).strip()
+                sections.append({
+                    "title": current_title,
+                    "content": sec_text,
+                    "tokens_est": round(len(sec_text) / 3.8)
+                })
+            current_title = line.lstrip("#").strip()
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        sec_text = "\n".join(current_lines).strip()
+        sections.append({
+            "title": current_title,
+            "content": sec_text,
+            "tokens_est": round(len(sec_text) / 3.8)
+        })
+    return sections
+
+
 def cmd_profile(args) -> None:
-    """Reads or updates USER_PROFILE.md."""
+    """Reads or extracts sections from USER_PROFILE.md with token-efficient filters."""
     if not PROFILE_FILE.exists():
         if args.json:
             print(json.dumps({"error": "USER_PROFILE.md not found"}, indent=2))
@@ -63,6 +93,61 @@ def cmd_profile(args) -> None:
         return
 
     content = PROFILE_FILE.read_text(encoding="utf-8")
+    sections = parse_profile_sections(content)
+
+    if getattr(args, "list_sections", False):
+        if args.json:
+            sec_meta = [{"title": s["title"], "tokens_est": s["tokens_est"]} for s in sections]
+            print(json.dumps({"total_sections": len(sec_meta), "sections": sec_meta}, indent=2, ensure_ascii=False))
+        else:
+            print(f"Available Sections in USER_PROFILE.md ({len(sections)} sections):")
+            print("-" * 65)
+            for idx, s in enumerate(sections, 1):
+                print(f"  [{idx:02d}] {s['title']} (~{s['tokens_est']} tokens)")
+            print("\nTip: Retrieve a specific section via `cephalo profile --section <name|index>`")
+        return
+
+    req_section = getattr(args, "section", None)
+    if req_section:
+        req_clean = req_section.strip().lower()
+        matched = None
+        if req_clean.isdigit():
+            idx = int(req_clean)
+            if 1 <= idx <= len(sections):
+                matched = sections[idx - 1]
+        if not matched:
+            for s in sections:
+                if req_clean in s["title"].lower():
+                    matched = s
+                    break
+
+        if not matched:
+            avail = [s["title"] for s in sections]
+            if args.json:
+                print(json.dumps({"error": f"Section '{req_section}' not found", "available_sections": avail}, indent=2))
+            else:
+                print(f"Error: Section '{req_section}' not found in USER_PROFILE.md.")
+                print(f"Available sections: {', '.join(avail[:6])}...")
+            return
+
+        content = matched["content"]
+        if getattr(args, "copy", False):
+            from cephalo.utils.clipboard_utils import set_clipboard_text
+            set_clipboard_text(content)
+            if not args.json:
+                print(f"[+] Profile section '{matched['title']}' copied to clipboard.")
+
+        if args.json:
+            print(json.dumps({
+                "section": matched["title"],
+                "tokens_est": matched["tokens_est"],
+                "content": content
+            }, indent=2, ensure_ascii=False))
+        else:
+            print(content)
+        return
+
+    # Default: full profile
     if getattr(args, "copy", False):
         from cephalo.utils.clipboard_utils import set_clipboard_text
         set_clipboard_text(content)
@@ -70,7 +155,11 @@ def cmd_profile(args) -> None:
             print("[+] Profile copied to clipboard.")
 
     if args.json:
-        print(json.dumps({"profile_path": str(PROFILE_FILE), "content": content}, indent=2, ensure_ascii=False))
+        print(json.dumps({
+            "profile_path": str(PROFILE_FILE),
+            "tokens_est": round(len(content) / 3.8),
+            "content": content
+        }, indent=2, ensure_ascii=False))
     else:
         print(content)
 
@@ -214,12 +303,34 @@ def cmd_search(args) -> None:
             print("[+] Search results copied to clipboard.")
 
     if args.json:
+        if getattr(args, "compact", False):
+            compact_results = [
+                {
+                    "category": r.get("category", "general"),
+                    "content": r.get("content", ""),
+                    "score": round(float(r.get("_relevance_score", r.get("_distance", 0.0))), 4)
+                }
+                for r in results
+            ]
+            print(json.dumps({"query": args.query, "count": len(compact_results), "results": compact_results}, ensure_ascii=False))
+            return
+
         # Strip internal pyarrow formats if any for clean JSON serialization
         clean_results = []
         for r in results:
             clean_r = {k: v for k, v in r.items() if k != "vector"}
             clean_results.append(clean_r)
         print(json.dumps({"query": args.query, "type": args.type, "count": len(clean_results), "results": clean_results}, indent=2, ensure_ascii=False))
+        return
+
+    if getattr(args, "compact", False):
+        if not results:
+            print("No matching records found in LanceDB.")
+            return
+        for r in results:
+            cat = r.get("category", "general")
+            content = r.get("content", "")
+            print(f"• [{cat}] {content}")
         return
 
     print(f"\nSearching for: '{args.query}' (Type: {args.type.upper()})")
@@ -1399,7 +1510,9 @@ def main():
     subparsers.add_parser("status", parents=[shared_parser], help="Display memory status, counts, and health.")
 
     # Profile
-    subparsers.add_parser("profile", parents=[shared_parser], help="Display or read USER_PROFILE.md.")
+    profile_p = subparsers.add_parser("profile", parents=[shared_parser], help="Display or read USER_PROFILE.md.")
+    profile_p.add_argument("--section", "-s", type=str, default=None, help="Extract specific section by title keyword or index (e.g. cinema, hardware, car, rules).")
+    profile_p.add_argument("--list-sections", action="store_true", help="List all available sections and token estimates in USER_PROFILE.md.")
 
     # Search
     search_p = subparsers.add_parser("search", parents=[shared_parser], help="Search memory using hybrid, vector, or keyword matching.")
@@ -1407,6 +1520,7 @@ def main():
     search_p.add_argument("--type", choices=["hybrid", "vector", "fts"], default="hybrid", help="Search mode.")
     search_p.add_argument("--where", type=str, default=None, help="SQL filter expression.")
     search_p.add_argument("--limit", type=int, default=3, help="Max results to return (default: 3).")
+    search_p.add_argument("--compact", action="store_true", help="Output high-density, token-efficient results (strips verbose IDs and metadata).")
     search_p.add_argument("--tag", type=str, default=None, help="Filter results by tag (e.g. #cinema/hdr or cinema).")
     search_p.add_argument("--all", "--include-deprecated", dest="include_deprecated", action="store_true", help="Include superseded/deprecated memories in search results.")
 

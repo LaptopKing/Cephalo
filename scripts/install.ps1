@@ -303,9 +303,12 @@ if (Test-Path $AgyBase) {
     Set-Content -Path (Join-Path $PluginRulesDir "AGENTS.md") -Value $RuleContent -Encoding UTF8
     Set-Content -Path (Join-Path $PluginRulesDir "GEMINI.md") -Value $RuleContent -Encoding UTF8
 
-    $AgyRulesDir = Join-Path $AgyBase "config\rules"
-    New-Item -ItemType Directory -Path $AgyRulesDir -Force | Out-Null
-    Set-Content -Path (Join-Path $AgyRulesDir "cephalo_second_brain.md") -Value $RuleContent -Encoding UTF8
+    # Clean up legacy standalone global rule to eliminate duplicate prompt injection (~1,200 tokens/turn saved)
+    $LegacyRulePath = Join-Path $AgyBase "config\rules\cephalo_second_brain.md"
+    if (Test-Path $LegacyRulePath) {
+        Remove-Item -Path $LegacyRulePath -Force -ErrorAction SilentlyContinue
+        Write-Host "      Cleaned up legacy duplicate global rule to prevent token waste." -ForegroundColor Green
+    }
 
     # Non-destructive hooks merge
     $AutoHarvestPath = Join-Path $TargetDir "src\cephalo\learning\auto_harvest.py"

@@ -19,8 +19,10 @@ This file informs **Claude Code** (and compatible agent harnesses) on how to ope
 | :--- | :--- |
 | **Check System & Memory Status** | `cephalo status` |
 | **Hybrid Search (Dense + Keyword)** | `cephalo search "<query>" --json` |
+| **Compact Fast Search (Token-Efficient)** | `cephalo search "<query>" --compact` |
 | **Record Decision / Preference** | `cephalo record "<statement>" --category "<category>"` |
 | **User Profile Blueprint** | `cephalo profile` |
+| **Sectional Profile (Token-Efficient)** | `cephalo profile --section <name>` |
 | **Continuous Learning Cycle** | `cephalo learn run` |
 | **Continuous Learning Status** | `cephalo learn status` |
 | **Always-On Background Daemon** | `cephalo daemon [start\|status\|stop]` |
@@ -43,7 +45,7 @@ This file informs **Claude Code** (and compatible agent harnesses) on how to ope
    - UI/UX & Human-Centered heuristics (when applicable): WCAG 2.1 AA, 4 states (skeleton/error/empty/populated), 44px tap targets, bottom thumb zone, stone/pastel palette.
 3. **Automatic by Default (Zero-Manual-Trigger Invariant):** Any new feature added to Cephalo MUST work automatically without requiring manual commands or intervention, unless explicitly instructed or designed as an interactive CLI command.
 3. **English Language Invariant:** ALWAYS respond in English across all sessions. All projects, codebases, documentation, and user interfaces must be developed in English by default, unless explicitly requested otherwise.
-4. **Grounding in User Profile:** Ground your reasoning in [`USER_PROFILE.md`](USER_PROFILE.md):
+4. **Grounding in User Profile & Token Conservation:** Ground reasoning in user preferences and verified hardware. **Token-Efficiency Invariant:** Do NOT read the full `USER_PROFILE.md` into context for general queries (~11,000 tokens wasted). Use `cephalo search "<query>" --json` (~120 tokens) or `cephalo profile --section <name>` (~300 tokens). Full profile reads are strictly reserved for profile editing or auditing.
    - Living room display: **TCL 65T8B** (65-inch 4K QLED Google TV).
    - Cinema aesthetic: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn.
    - Communication: Direct, technical, pragmatic, clean markdown, no fluff.

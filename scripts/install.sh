@@ -207,7 +207,10 @@ EOF
     if [ -f "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" ]; then
         sed "s|{{CEPHALO_DIR}}|$TARGET_DIR|g" "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" > "$AGY_PLUGIN/rules/AGENTS.md"
         cp "$AGY_PLUGIN/rules/AGENTS.md" "$AGY_PLUGIN/rules/GEMINI.md"
-        cp "$AGY_PLUGIN/rules/AGENTS.md" "$HOME/.gemini/config/rules/cephalo_second_brain.md"
+        # Clean up legacy global rule if present to prevent duplicate prompt injection (~1,200 tokens/turn saved)
+        if [ -f "$HOME/.gemini/config/rules/cephalo_second_brain.md" ]; then
+            rm -f "$HOME/.gemini/config/rules/cephalo_second_brain.md"
+        fi
     fi
 
     # Non-destructive hooks merge

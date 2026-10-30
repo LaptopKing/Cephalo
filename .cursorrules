@@ -3,8 +3,8 @@
 You are operating with the user's sovereign Second Brain, Cephalo, located at:
 C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain
 
-## 1. Grounding in User Profile
-- User Profile: Read `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\USER_PROFILE.md`
+## 1. Grounding in User Profile & Token Efficiency
+- Token-Efficiency Invariant: NEVER call read_file on `USER_PROFILE.md` (~11,000 tokens) for routine queries. Ground reasoning using `cephalo search "<query>" --json` (~120 tokens) or `cephalo profile --section <name>` (~300 tokens). Full profile reads are strictly for explicit profile editing/auditing.
 - Living Room Display: TCL 65T8B (65-inch 4K QLED Google TV).
 - Tone: Direct, technical, pragmatic, clean markdown, no fluff.
 - Language: Hungarian (native primary) & English.
