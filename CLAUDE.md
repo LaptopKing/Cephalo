@@ -8,8 +8,8 @@ This file informs **Claude Code** (and compatible agent harnesses) on how to ope
 
 - **Root Directory:** `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain`
 - **Main CLI Entrypoint:** `cephalo` (or `python brain.py`)
-- **Native MCP Server:** `python C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\mcp_server.py`
-  - Add to Claude Code via: `claude mcp add cephalo python "C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\mcp_server.py"`
+- **Native MCP Server:** `python C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\src\cephalo\services\mcp_server.py`
+  - Add to Claude Code via: `claude mcp add cephalo python "C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\src\cephalo\services\mcp_server.py"`
 
 ---
 

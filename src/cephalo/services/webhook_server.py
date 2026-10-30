@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Base paths
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 BASE_DIR = ROOT_DIR
 DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
@@ -45,7 +45,7 @@ _pipeline_cache = None
 def get_pipeline():
     global _pipeline_cache
     if _pipeline_cache is None:
-        from embedding_pipeline import EmbeddingPipeline, create_embedder
+        from cephalo.core.embedding_pipeline import EmbeddingPipeline, create_embedder
         embedder = create_embedder(mode="local")
         _pipeline_cache = EmbeddingPipeline(embedder=embedder)
     return _pipeline_cache

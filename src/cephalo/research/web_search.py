@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # Base paths
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[3]
 DATA_DIR = BASE_DIR / "data"
 CACHE_DB_PATH = DATA_DIR / "search_cache.db"
 DEFAULT_PROFILE_DIR = DATA_DIR / "chromium_profile"
@@ -53,11 +53,11 @@ logger = logging.getLogger("cephalo.web_search")
 
 # Import SERP data structures
 try:
-    from serp_renderer import CephaloSERP, SearchItem, get_social_badge, render_serp_html
+    from cephalo.research.serp_renderer import CephaloSERP, SearchItem, get_social_badge, render_serp_html
 except ImportError:
     # Fallback if imported from a different cwd
     sys.path.insert(0, str(BASE_DIR))
-    from serp_renderer import CephaloSERP, SearchItem, get_social_badge, render_serp_html
+    from cephalo.research.serp_renderer import CephaloSERP, SearchItem, get_social_badge, render_serp_html
 
 # Scrapling Adaptive Stealth Scraping Integration (curl_cffi TLS impersonation + Patchright)
 try:

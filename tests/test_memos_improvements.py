@@ -17,15 +17,20 @@ import time
 import unittest
 import urllib.request
 from pathlib import Path
+import sys
+from pathlib import Path
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
-from embedding_pipeline import (
+from cephalo.core.embedding_pipeline import (
     EmbeddingPipeline,
     FastEmbedEmbedder,
     LanceDBStore,
     extract_tags,
 )
-from webhook_server import WebhookServer, send_quick_memory
-from wiki_generator import (
+from cephalo.services.webhook_server import WebhookServer, send_quick_memory
+from cephalo.research.wiki_generator import (
     WikiGenerator,
     get_heatmap_data,
     get_timeline_records,
@@ -137,7 +142,7 @@ class TestWebhookQuickCapture(unittest.TestCase):
 
     def test_webhook_ingest_and_health(self):
         # Pre-warm pipeline so ONNX model is already in memory
-        from webhook_server import get_pipeline
+        from cephalo.services.webhook_server import get_pipeline
         get_pipeline()
 
         server = WebhookServer(host="127.0.0.1", port=7439)

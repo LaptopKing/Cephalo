@@ -9,7 +9,7 @@ Connect **Claude Code** to Cephalo for sovereign personal memory, verified engin
 In your terminal, run:
 
 ```bash
-claude mcp add cephalo python "C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\mcp_server.py"
+claude mcp add cephalo python "C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\src\cephalo\services\mcp_server.py"
 ```
 
 Verify with:

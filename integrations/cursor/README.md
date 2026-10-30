@@ -11,7 +11,7 @@ Connect **Cursor** (Cursor AI, Composer, and Chat) to Cephalo.
 3. Click **Add New MCP Server**:
    - **Name:** `cephalo`
    - **Type:** `command`
-   - **Command:** `python C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\mcp_server.py`
+   - **Command:** `python C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\src\cephalo\services\mcp_server.py`
 4. Alternatively, paste [`cursor_mcp.json`](cursor_mcp.json) into your workspace's `.cursor/mcp.json`.
 
 ---

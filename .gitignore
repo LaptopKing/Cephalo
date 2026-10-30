@@ -8,6 +8,8 @@ data/lancedb/**
 data/prompts.jsonl
 data/*.jsonl
 data/*.json
+data/*.pid
+*.pid
 !data/prompts.sample.jsonl
 data/chromium_profile/
 data/serp_cache/

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Cephalo - Sovereign Local Memory & Cognitive Coprocessor CLI Runner
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON_CMD="python3"
+if [ -f "$SCRIPT_DIR/.venv/bin/python" ]; then
+    PYTHON_CMD="$SCRIPT_DIR/.venv/bin/python"
+elif ! command -v python3 &> /dev/null; then
+    PYTHON_CMD="python"
+fi
+exec "$PYTHON_CMD" "$SCRIPT_DIR/brain.py" "$@"

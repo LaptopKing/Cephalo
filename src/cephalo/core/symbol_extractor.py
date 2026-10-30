@@ -133,7 +133,7 @@ class CodeSymbolIndexer:
     SUPPORTED_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs"}
 
     def __init__(self, root_dir: Optional[Path] = None):
-        self.root_dir = (root_dir or Path(__file__).resolve().parent).resolve()
+        self.root_dir = (root_dir or Path(__file__).resolve().parents[3]).resolve()
 
     def find_definitions(
         self,

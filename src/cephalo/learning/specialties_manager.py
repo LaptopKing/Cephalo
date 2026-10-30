@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Base Paths
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 BASE_DIR = ROOT_DIR
 SPECIALTIES_DIR = ROOT_DIR / "specialties"
 SPECIALTIES_DIR.mkdir(parents=True, exist_ok=True)
@@ -71,7 +71,7 @@ class SpecialtiesManager:
 
         name_slug = slugify(name_clean)
         try:
-            from specialties_synthesizer import SpecialtySynthesizer
+            from cephalo.learning.specialties_synthesizer import SpecialtySynthesizer
             resolved_slug = SpecialtySynthesizer.resolve_slug(name_clean)
         except Exception:
             resolved_slug = name_slug
@@ -158,7 +158,7 @@ class SpecialtiesManager:
         sync_to_vector_db: bool = True,
     ) -> Dict[str, Any]:
         """Creates a new specialty under a project, persists files, and indexes in LanceDB."""
-        from embedding_pipeline import Sanitizer
+        from cephalo.core.embedding_pipeline import Sanitizer
         sanitizer = Sanitizer(enable_gliner=False)
 
         proj_slug = slugify(project)
@@ -266,7 +266,7 @@ class SpecialtiesManager:
         Autonomously synthesizes and creates a specialty for a technology or methodology.
         Uses verified curated knowledge if available, or generates a domain profile dynamically.
         """
-        from specialties_synthesizer import SpecialtySynthesizer
+        from cephalo.learning.specialties_synthesizer import SpecialtySynthesizer
 
         # Check if already exists under project or global
         existing = self.get_specialty(topic, project=project)
@@ -312,7 +312,7 @@ class SpecialtiesManager:
         Executes deep research across web search, GitHub repos, and craftsmanship standards,
         then registers and indexes the resulting specialty.
         """
-        from research_engine import DeepResearchEngine
+        from cephalo.research.research_engine import DeepResearchEngine
         engine = DeepResearchEngine()
         synth = engine.synthesize_specialty(
             topic=topic,
@@ -345,7 +345,7 @@ class SpecialtiesManager:
         """
         Extracts technology and methodology candidates and autonomously creates any missing specialties.
         """
-        from specialties_synthesizer import SpecialtySynthesizer
+        from cephalo.learning.specialties_synthesizer import SpecialtySynthesizer
 
         if isinstance(text_or_items, str):
             candidates = SpecialtySynthesizer.discover_technologies(text_or_items)
@@ -388,7 +388,7 @@ class SpecialtiesManager:
         manifest_file = s_dir / "manifest.json"
         manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
 
-        from embedding_pipeline import Sanitizer
+        from cephalo.core.embedding_pipeline import Sanitizer
         sanitizer = Sanitizer()
 
         now = datetime.datetime.now().astimezone().isoformat()

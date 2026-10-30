@@ -38,7 +38,7 @@ if sys.platform == "win32":
         pass
 
 # Base Paths
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 SCRIPT_DIR = ROOT_DIR
 DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
@@ -183,7 +183,7 @@ def harvest_all_user_prompts(messages: List[Dict[str, Any]], conversation_id: st
             # Autonomous Specialty creation & Deep Research for unknown technologies/methodologies
             if "specialty_domain_learning" in detected_categories or "deep_research_trigger" in detected_categories:
                 try:
-                    from specialties_manager import SpecialtiesManager
+                    from cephalo.learning.specialties_manager import SpecialtiesManager
                     sm = SpecialtiesManager()
                     sm.auto_discover_and_create(text, project="global")
                 except Exception:
@@ -350,7 +350,7 @@ def handle_stop_hook(input_data: Dict[str, Any]) -> None:
 
     # Autonomous Continuous Learning Cycle
     try:
-        from continuous_learner import ContinuousLearner
+        from cephalo.learning.continuous_learner import ContinuousLearner
         learner = ContinuousLearner()
         learner.run_cycle()
     except Exception:

@@ -10,7 +10,7 @@ Welcome, AI Agent. This repository is the user's sovereign, local-first cognitiv
 ## 1. Core Principles (Non-Negotiable)
 
 1. **Agent-Agnostic Portability:** Cephalo is designed to be completely sovereign and operable by ANY modern AI harness via:
-   - **Model Context Protocol (MCP):** Connect directly via `python mcp_server.py`.
+   - **Model Context Protocol (MCP):** Connect directly via `python brain.py mcp` (or `cephalo mcp`).
    - **Deterministic CLI Tooling:** Run `cephalo <command>` (or `python brain.py <command>`).
    - **Cross-Harness Configurations:** Native `.cursorrules`, `.windsurfrules`, `CLAUDE.md`, and `integrations/`.
 2. **Autonomous Continuous Learning:** Cephalo's primary goal during development is to continuously and autonomously learn the user's coding style, workflow preferences, and personal tastes. If the user expresses a preference, taste, hardware spec, negative critique (*"too slow"*, *"too grey"*, *"not what we wanted"*), or makes an architectural decision, record it immediately via `cephalo record` or via MCP `cephalo_record`. The user should NEVER have to manually remind you to save preferences.
@@ -27,11 +27,11 @@ Welcome, AI Agent. This repository is the user's sovereign, local-first cognitiv
 
 ### A. Model Context Protocol (MCP) — Recommended for All Modern IDEs & Agents
 
-Cephalo includes a built-in stdio MCP server (`mcp_server.py`). Compatible out-of-the-box with **Claude Code**, **Cursor**, **Windsurf**, **Zed**, and **Claude Desktop**:
+Cephalo includes a built-in stdio MCP server (`src/cephalo/services/mcp_server.py` or `cephalo mcp`). Compatible out-of-the-box with **Claude Code**, **Cursor**, **Windsurf**, **Zed**, and **Claude Desktop**:
 
 ```bash
 # Add to Claude Code:
-claude mcp add cephalo python "C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\mcp_server.py"
+claude mcp add cephalo python "C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\src\cephalo\services\mcp_server.py"
 
 # Test or launch stdio server:
 cephalo mcp

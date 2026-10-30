@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Base paths
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 SCRIPT_DIR = ROOT_DIR
 DATA_DIR = ROOT_DIR / "data"
 STATE_FILE = DATA_DIR / "continuous_learning_state.json"
@@ -211,7 +211,7 @@ class ContinuousLearner:
     # =========================================================================
     def get_existing_specialty_slugs(self) -> Set[str]:
         """Returns all registered specialty slugs using SpecialtiesManager."""
-        from specialties_manager import SpecialtiesManager
+        from cephalo.learning.specialties_manager import SpecialtiesManager
         sm = SpecialtiesManager()
         slugs = set()
         for s in sm.list_specialties():
@@ -227,8 +227,8 @@ class ContinuousLearner:
         self, scanned_projects: List[Dict[str, Any]]
     ) -> List[str]:
         """Detects technologies and methodologies without a specialty and synthesizes them."""
-        from specialties_manager import SpecialtiesManager
-        from specialties_synthesizer import SpecialtySynthesizer
+        from cephalo.learning.specialties_manager import SpecialtiesManager
+        from cephalo.learning.specialties_synthesizer import SpecialtySynthesizer
 
         existing_slugs = self.get_existing_specialty_slugs()
         sm = SpecialtiesManager()

@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 BASE_DIR = ROOT_DIR
 PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 
@@ -65,7 +65,7 @@ class ContextManager:
         # 4. Domain Specialty if requested
         if specialty:
             try:
-                from specialties_manager import SpecialtiesManager
+                from cephalo.learning.specialties_manager import SpecialtiesManager
                 mgr = SpecialtiesManager()
                 data = mgr.get_specialty(specialty, project=project)
                 if data:

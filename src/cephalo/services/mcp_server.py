@@ -54,7 +54,7 @@ logging.basicConfig(
 logger = logging.getLogger("cephalo.mcp")
 
 # Base paths
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 SCRIPT_DIR = ROOT_DIR
 PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 
@@ -335,14 +335,14 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             return {"content": PROFILE_FILE.read_text(encoding="utf-8")}
 
         elif name == "cephalo_list_specialties":
-            from specialties_manager import SpecialtiesManager
+            from cephalo.learning.specialties_manager import SpecialtiesManager
             sm = SpecialtiesManager()
             project = arguments.get("project")
             items = sm.list_specialties(project=project)
             return {"count": len(items), "specialties": items}
 
         elif name == "cephalo_get_specialty":
-            from specialties_manager import SpecialtiesManager
+            from cephalo.learning.specialties_manager import SpecialtiesManager
             sm = SpecialtiesManager()
             slug = arguments.get("slug", "")
             project = arguments.get("project", "global")
@@ -354,7 +354,7 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             return spec
 
         elif name == "cephalo_auto_create_specialty":
-            from specialties_manager import SpecialtiesManager
+            from cephalo.learning.specialties_manager import SpecialtiesManager
             sm = SpecialtiesManager()
             topic = arguments.get("topic", "")
             project = arguments.get("project", "global")
@@ -362,18 +362,18 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             return {"status": "success", "specialty": spec}
 
         elif name == "cephalo_continuous_learn":
-            from continuous_learner import ContinuousLearner
+            from cephalo.learning.continuous_learner import ContinuousLearner
             learner = ContinuousLearner()
             report = learner.run_cycle()
             return {"status": "success", "report": report}
 
         elif name == "cephalo_learning_status":
-            from continuous_learner import ContinuousLearner
+            from cephalo.learning.continuous_learner import ContinuousLearner
             learner = ContinuousLearner()
             return {"status": "success", "state": learner.state}
 
         elif name == "cephalo_deep_research":
-            from research_engine import DeepResearchEngine
+            from cephalo.research.research_engine import DeepResearchEngine
             engine = DeepResearchEngine()
             topic = arguments.get("topic", "")
             project = arguments.get("project", "global")
@@ -389,7 +389,7 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             )
 
             if create:
-                from specialties_manager import SpecialtiesManager
+                from cephalo.learning.specialties_manager import SpecialtiesManager
                 sm = SpecialtiesManager()
                 created = sm.create_specialty(
                     name=synth["name"],
@@ -418,7 +418,7 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             }
 
         elif name == "cephalo_web_search":
-            from web_search import WebSearchEngine
+            from cephalo.research.web_search import WebSearchEngine
             engine = WebSearchEngine()
             query = arguments.get("query", "")
             limit = arguments.get("limit", 5)
@@ -436,7 +436,7 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             return res
 
         elif name == "cephalo_web_fetch":
-            from web_search import WebSearchEngine
+            from cephalo.research.web_search import WebSearchEngine
             engine = WebSearchEngine()
             url = arguments.get("url", "")
             dynamic = arguments.get("dynamic", False)

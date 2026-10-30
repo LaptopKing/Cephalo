@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 # Base paths
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 SCRIPT_DIR = ROOT_DIR
 DATA_DIR = ROOT_DIR / "data"
 PID_FILE = DATA_DIR / "cephalo_daemon.pid"
@@ -109,7 +109,7 @@ class CephaloDaemon:
 
         # 1. Run Continuous Learner
         try:
-            from continuous_learner import ContinuousLearner
+            from cephalo.learning.continuous_learner import ContinuousLearner
             learner = ContinuousLearner()
             learn_report = learner.run_cycle()
             cycle_result["learning"] = learn_report
@@ -119,7 +119,7 @@ class CephaloDaemon:
 
         # 2. Run Autonomous Transcript Harvest
         try:
-            from auto_harvest import run_standalone_scan
+            from cephalo.learning.auto_harvest import run_standalone_scan
             run_standalone_scan()
             cycle_result["harvest"] = "completed"
         except Exception as e:
@@ -137,7 +137,7 @@ class CephaloDaemon:
 
         # Start background quick-capture webhook server
         try:
-            from webhook_server import WebhookServer, TelegramIngestBot
+            from cephalo.services.webhook_server import WebhookServer, TelegramIngestBot
             self.webhook_server = WebhookServer(port=self.webhook_port)
             self.webhook_server.start(background=True)
             logger.info("Daemon quick-capture webhook server active on port %d", self.webhook_port)

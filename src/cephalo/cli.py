@@ -48,7 +48,7 @@ PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 
 def get_pipeline(table_name: Optional[str] = None):
     """Lazy loader for EmbeddingPipeline to keep light commands (status, profile) sub-second."""
-    from embedding_pipeline import EmbeddingPipeline, create_embedder
+    from cephalo.core.embedding_pipeline import EmbeddingPipeline, create_embedder
     embedder = create_embedder(mode="local")
     return EmbeddingPipeline(embedder=embedder, db_path=DEFAULT_LANCEDB_DIR, table_name=table_name)
 
@@ -64,7 +64,7 @@ def cmd_profile(args) -> None:
 
     content = PROFILE_FILE.read_text(encoding="utf-8")
     if getattr(args, "copy", False):
-        from clipboard_utils import set_clipboard_text
+        from cephalo.utils.clipboard_utils import set_clipboard_text
         set_clipboard_text(content)
         if not args.json:
             print("[+] Profile copied to clipboard.")
@@ -159,7 +159,7 @@ def resolve_cli_input(
     val = getattr(args, field_name, None)
 
     if allow_clip and getattr(args, "clip", False):
-        from clipboard_utils import get_clipboard_text
+        from cephalo.utils.clipboard_utils import get_clipboard_text
         clip_content = get_clipboard_text()
         if clip_content:
             return clip_content
@@ -201,7 +201,7 @@ def cmd_search(args) -> None:
     )
 
     if getattr(args, "copy", False):
-        from clipboard_utils import set_clipboard_text
+        from cephalo.utils.clipboard_utils import set_clipboard_text
         if args.json:
             clean_results = [{k: v for k, v in r.items() if k != "vector"} for r in results]
             set_clipboard_text(json.dumps(clean_results, indent=2, ensure_ascii=False))
@@ -261,7 +261,7 @@ def cmd_def(args) -> None:
     )
 
     target_path = Path(args.path) if getattr(args, "path", None) else None
-    from symbol_extractor import CodeSymbolIndexer
+    from cephalo.core.symbol_extractor import CodeSymbolIndexer
     indexer = CodeSymbolIndexer(root_dir=target_path)
 
     results = indexer.find_definitions(
@@ -272,7 +272,7 @@ def cmd_def(args) -> None:
     )
 
     if getattr(args, "copy", False):
-        from clipboard_utils import set_clipboard_text
+        from cephalo.utils.clipboard_utils import set_clipboard_text
         if args.json:
             set_clipboard_text(json.dumps([r.to_dict() for r in results], indent=2, ensure_ascii=False))
         else:
@@ -368,7 +368,7 @@ def cmd_sync(args) -> None:
 
 def cmd_harvest(args) -> None:
     """Scans conversation transcripts and harvests preferences/critiques."""
-    from auto_harvest import run_standalone_harvest
+    from cephalo.learning.auto_harvest import run_standalone_harvest
     run_standalone_harvest(transcript_path=args.transcript)
 
 def _handle_specialty_list(mgr, args) -> None:
@@ -521,7 +521,7 @@ def _handle_specialty_research(mgr, args) -> None:
 
 def cmd_specialty(args) -> None:
     """Handles CRUD operations for the Specialties domain layer."""
-    from specialties_manager import SpecialtiesManager
+    from cephalo.learning.specialties_manager import SpecialtiesManager
     mgr = SpecialtiesManager()
     action = getattr(args, "specialty_action", None) or "list"
 
@@ -551,7 +551,7 @@ def cmd_specialty(args) -> None:
 
 def cmd_research(args) -> None:
     """Executes deep research on a topic, finding best practices, industry standards, and top GitHub repos."""
-    from research_engine import DeepResearchEngine
+    from cephalo.research.research_engine import DeepResearchEngine
     engine = DeepResearchEngine()
     synth = engine.synthesize_specialty(
         topic=args.topic,
@@ -561,7 +561,7 @@ def cmd_research(args) -> None:
     )
 
     if getattr(args, "create", False):
-        from specialties_manager import SpecialtiesManager
+        from cephalo.learning.specialties_manager import SpecialtiesManager
         sm = SpecialtiesManager()
         created = sm.create_specialty(
             name=synth["name"],
@@ -601,7 +601,7 @@ def cmd_research(args) -> None:
 
 def cmd_email(args) -> None:
     """Delegates to EmailClient."""
-    from email_client import EmailClient
+    from cephalo.services.email_client import EmailClient
     client = EmailClient()
     action = getattr(args, "email_action", None) or "status"
 
@@ -657,7 +657,7 @@ def cmd_email(args) -> None:
 
 def cmd_web(args) -> None:
     """Searches the live web via WebSearchEngine with Google-style SERP, Quick Summary, and Social Blocks."""
-    from web_search import WebSearchEngine
+    from cephalo.research.web_search import WebSearchEngine
     engine = WebSearchEngine()
     include_social = not getattr(args, "no_social", False)
     serp = engine.search_serp(args.query, max_results=args.limit, include_social=include_social)
@@ -772,7 +772,7 @@ def cmd_web(args) -> None:
 
 def cmd_fetch(args) -> None:
     """Fetches clean text from a URL (static, dynamic Chromium, or YouTube) and optionally records it."""
-    from web_search import WebSearchEngine
+    from cephalo.research.web_search import WebSearchEngine
     engine = WebSearchEngine()
     display_title = f"CEPHALO WEB FETCH: {args.url}"
     try:
@@ -799,7 +799,7 @@ def cmd_fetch(args) -> None:
     pattern_name = getattr(args, "pattern", None)
     if pattern_name and page_text:
         try:
-            from patterns_manager import PatternsManager
+            from cephalo.core.patterns_manager import PatternsManager
             pm = PatternsManager()
             page_text = pm.assemble_prompt(pattern_name, page_text)
             display_title += f" [Pattern: {pattern_name}]"
@@ -807,7 +807,7 @@ def cmd_fetch(args) -> None:
             print(f"Warning: Pattern assembly failed: {pe}")
 
     if getattr(args, "copy", False) and page_text:
-        from clipboard_utils import set_clipboard_text
+        from cephalo.utils.clipboard_utils import set_clipboard_text
         set_clipboard_text(page_text)
         if not args.json:
             print("[+] Content copied to clipboard.")
@@ -832,7 +832,7 @@ def cmd_fetch(args) -> None:
 
 def cmd_learn(args) -> None:
     """Executes continuous learning across workspaces, stacks, and episodic memory."""
-    from continuous_learner import ContinuousLearner
+    from cephalo.learning.continuous_learner import ContinuousLearner
     learner = ContinuousLearner()
     action = getattr(args, "learn_action", None) or "run"
 
@@ -876,13 +876,13 @@ def cmd_learn(args) -> None:
 
 def cmd_mcp(args) -> None:
     """Launches native Model Context Protocol (MCP) stdio server."""
-    from mcp_server import run_stdio_server
+    from cephalo.services.mcp_server import run_stdio_server
     run_stdio_server()
 
 
 def cmd_daemon(args) -> None:
     """Manages the always-on background daemon."""
-    from cephalo_daemon import (
+    from cephalo.services.cephalo_daemon import (
         CephaloDaemon,
         get_daemon_status,
         start_daemon_detached,
@@ -929,12 +929,14 @@ def cmd_daemon(args) -> None:
 
 
 def maybe_auto_learn() -> None:
+    if '-h' in sys.argv or '--help' in sys.argv:
+        return
     """Opportunistic continuous learning trigger.
     Runs a fast sub-second learning cycle if more than 10 minutes have elapsed since the last cycle.
     Guarantees continuous learning across all agent harnesses without requiring manual commands.
     """
     try:
-        from continuous_learner import ContinuousLearner
+        from cephalo.learning.continuous_learner import ContinuousLearner
         learner = ContinuousLearner()
         last_str = learner.state.get("last_cycle_timestamp")
         should_run = False
@@ -957,14 +959,14 @@ def maybe_auto_learn() -> None:
 
 def cmd_pattern(args) -> None:
     """Manages cognitive execution patterns ('Reflexes')."""
-    from patterns_manager import PatternsManager
+    from cephalo.core.patterns_manager import PatternsManager
     pm = PatternsManager()
     action = getattr(args, "pattern_action", None) or "list"
 
     if action == "list":
         items = pm.list_patterns()
         if getattr(args, "copy", False):
-            from clipboard_utils import set_clipboard_text
+            from cephalo.utils.clipboard_utils import set_clipboard_text
             set_clipboard_text(json.dumps(items, indent=2))
             if not args.json:
                 print("[+] Pattern list copied to clipboard.")
@@ -988,7 +990,7 @@ def cmd_pattern(args) -> None:
                 print(f"Error: Pattern '{args.name}' not found.")
             return
         if getattr(args, "copy", False):
-            from clipboard_utils import set_clipboard_text
+            from cephalo.utils.clipboard_utils import set_clipboard_text
             set_clipboard_text(p["content"])
             if not args.json:
                 print("[+] Pattern prompt copied to clipboard.")
@@ -1000,7 +1002,7 @@ def cmd_pattern(args) -> None:
     elif action == "run":
         input_text = getattr(args, "text", None)
         if getattr(args, "clip", False):
-            from clipboard_utils import get_clipboard_text
+            from cephalo.utils.clipboard_utils import get_clipboard_text
             input_text = get_clipboard_text()
         elif (not input_text or input_text == "-") and not sys.stdin.isatty():
             input_text = sys.stdin.read().strip()
@@ -1011,7 +1013,7 @@ def cmd_pattern(args) -> None:
 
         context_text = None
         if getattr(args, "context", None):
-            from context_manager import ContextManager
+            from cephalo.core.context_manager import ContextManager
             cm = ContextManager()
             context_text = cm.export_context(specialty=args.context)
 
@@ -1022,7 +1024,7 @@ def cmd_pattern(args) -> None:
             sys.exit(1)
 
         if getattr(args, "copy", False):
-            from clipboard_utils import set_clipboard_text
+            from cephalo.utils.clipboard_utils import set_clipboard_text
             set_clipboard_text(full_prompt)
             if not args.json:
                 print("[+] Assembled prompt copied to clipboard.")
@@ -1050,7 +1052,7 @@ def cmd_pattern(args) -> None:
 
 def cmd_context(args) -> None:
     """Exports structured context blocks for external LLMs or agents."""
-    from context_manager import ContextManager
+    from cephalo.core.context_manager import ContextManager
     cm = ContextManager()
     action = getattr(args, "context_action", None) or "export"
 
@@ -1062,7 +1064,7 @@ def cmd_context(args) -> None:
             include_cinema=getattr(args, "cinema", False),
         )
         if getattr(args, "copy", False):
-            from clipboard_utils import set_clipboard_text
+            from cephalo.utils.clipboard_utils import set_clipboard_text
             set_clipboard_text(payload)
             if not args.json:
                 print("[+] Context payload copied to clipboard.")
@@ -1075,14 +1077,14 @@ def cmd_context(args) -> None:
 
 def cmd_wiki(args) -> None:
     """Manages the sovereign local DeepWiki engine."""
-    from wiki_generator import WikiGenerator
+    from cephalo.research.wiki_generator import WikiGenerator
     wg = WikiGenerator()
     action = getattr(args, "wiki_action", None) or "generate"
 
     if action == "generate":
         files = wg.generate_all()
         if getattr(args, "copy", False):
-            from clipboard_utils import set_clipboard_text
+            from cephalo.utils.clipboard_utils import set_clipboard_text
             summary_text = "\n".join([f"- {f.name}" for f in files])
             set_clipboard_text(summary_text)
             if not args.json:
@@ -1106,7 +1108,7 @@ def cmd_wiki(args) -> None:
 
     elif action == "serve":
         port = getattr(args, "port", 7433)
-        from wiki_generator import run_deepwiki_server
+        from cephalo.research.wiki_generator import run_deepwiki_server
         run_deepwiki_server(port=port, open_browser=getattr(args, "open", True))
 
 
@@ -1119,7 +1121,7 @@ def cmd_webhook(args) -> None:
     host = getattr(args, "host", "127.0.0.1")
 
     if action == "serve":
-        from webhook_server import WebhookServer
+        from cephalo.services.webhook_server import WebhookServer
         server = WebhookServer(host=host, port=port, auth_token=getattr(args, "token", None))
         server.start(background=False)
 
@@ -1144,7 +1146,7 @@ def cmd_webhook(args) -> None:
                 print("    Start it with: cephalo webhook serve (or start cephalo daemon)")
 
     elif action == "send":
-        from webhook_server import send_quick_memory
+        from cephalo.services.webhook_server import send_quick_memory
         text = getattr(args, "text", "")
         cat = getattr(args, "category", "quick_note")
         try:
@@ -1160,7 +1162,7 @@ def cmd_webhook(args) -> None:
 
 def cmd_youtube(args) -> None:
     """Extracts a YouTube video transcript directly, with optional pattern and indexing."""
-    from web_search import WebSearchEngine
+    from cephalo.research.web_search import WebSearchEngine
     engine = WebSearchEngine()
     try:
         yt_res = engine.fetch_youtube_transcript(args.url)
@@ -1175,14 +1177,14 @@ def cmd_youtube(args) -> None:
     pattern_name = getattr(args, "pattern", None)
     if pattern_name:
         try:
-            from patterns_manager import PatternsManager
+            from cephalo.core.patterns_manager import PatternsManager
             pm = PatternsManager()
             content = pm.assemble_prompt(pattern_name, content)
         except Exception as pe:
             print(f"Warning: Pattern assembly failed: {pe}")
 
     if getattr(args, "copy", False):
-        from clipboard_utils import set_clipboard_text
+        from cephalo.utils.clipboard_utils import set_clipboard_text
         set_clipboard_text(content)
         if not args.json:
             print("[+] YouTube transcript copied to clipboard.")
@@ -1209,6 +1211,163 @@ def cmd_youtube(args) -> None:
         )
         if not args.json:
             print(f"[+] Transcript sanitized & indexed into LanceDB [{rec.get('id')}].")
+
+
+def cmd_safeguard(args) -> None:
+    """Manages configurable privacy safeguards, blacklists, and security gatekeepers."""
+    from cephalo.core.safeguards import (
+        add_blacklisted_process,
+        add_blacklisted_title,
+        is_shielded,
+        load_safeguards_config,
+        remove_blacklisted_process,
+        remove_blacklisted_title,
+    )
+
+    action = getattr(args, "safeguard_action", None) or "status"
+
+    if action == "status":
+        cfg = load_safeguards_config()
+        if args.json:
+            print(json.dumps(cfg, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 65)
+            print("  🛡️  CEPHALO PRIVACY SAFEGUARDS & BLACKLIST")
+            print("=" * 65)
+            print(f"  Enabled:                  {cfg.get('enabled')}")
+            print(f"  Pause Fullscreen Video:   {cfg.get('pause_on_fullscreen_video')}")
+            print(f"  Blacklisted Processes:    ({len(cfg.get('blacklisted_processes', []))})")
+            for p in cfg.get("blacklisted_processes", []):
+                print(f"    • {p}")
+            print(f"  Blacklisted Window Titles:({len(cfg.get('blacklisted_window_titles', []))})")
+            for t in cfg.get("blacklisted_window_titles", []):
+                print(f"    • {t}")
+            print(f"  Blacklisted Domains:      ({len(cfg.get('blacklisted_domains', []))})")
+            for d in cfg.get("blacklisted_domains", []):
+                print(f"    • {d}")
+            print("=" * 65)
+
+    elif action == "add-proc":
+        cfg = add_blacklisted_process(args.name)
+        if args.json:
+            print(json.dumps({"status": "added", "process": args.name}, indent=2))
+        else:
+            print(f"[+] Added process '{args.name}' to safeguards blacklist.")
+
+    elif action == "add-title":
+        cfg = add_blacklisted_title(args.pattern)
+        if args.json:
+            print(json.dumps({"status": "added", "pattern": args.pattern}, indent=2))
+        else:
+            print(f"[+] Added window title pattern '{args.pattern}' to safeguards blacklist.")
+
+    elif action == "remove-proc":
+        ok = remove_blacklisted_process(args.name)
+        if args.json:
+            print(json.dumps({"status": "removed" if ok else "not_found", "process": args.name}, indent=2))
+        else:
+            print(f"[{'+' if ok else '-'}] Process '{args.name}' {'removed' if ok else 'not found'}.")
+
+    elif action == "remove-title":
+        ok = remove_blacklisted_title(args.pattern)
+        if args.json:
+            print(json.dumps({"status": "removed" if ok else "not_found", "pattern": args.pattern}, indent=2))
+        else:
+            print(f"[{'+' if ok else '-'}] Window pattern '{args.pattern}' {'removed' if ok else 'not found'}.")
+
+    elif action == "test":
+        shielded, reason = is_shielded(window_title=args.title, process_name=getattr(args, "process", ""))
+        res = {"shielded": shielded, "reason": reason, "title": args.title, "process": getattr(args, "process", "")}
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            status_tag = "🔴 SHIELDED (BLOCKED)" if shielded else "🟢 ALLOWED (SAFE)"
+            print(f"Test Result: {status_tag}")
+            if reason:
+                print(f"Reason:      {reason}")
+
+
+def cmd_screen(args) -> None:
+    """Manages cross-platform perceptual delta screen capture and visual memory."""
+    from cephalo.services.screen_recorder import ScreenMemoryEngine, get_active_window_context
+
+    action = getattr(args, "screen_action", None) or "status"
+    engine = ScreenMemoryEngine()
+
+    if action == "snap":
+        force = getattr(args, "force", False)
+        res = engine.capture_step(force=force)
+        if args.json:
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+        else:
+            st = res.get("status")
+            if st == "captured":
+                print(f"[+] Screen Keyframe Captured [{res.get('frame_id')}]:")
+                print(f"    Path:    {res.get('path')}")
+                print(f"    Delta:   {res.get('delta')} (Threshold exceeded)")
+                print(f"    Size:    {res.get('size_kb')} KB (WebP)")
+                print(f"    Window:  {res.get('window_title') or 'N/A'}")
+                print(f"    Process: {res.get('process_name') or 'N/A'}")
+            elif st == "skipped_no_change":
+                print(f"[*] Screen Unchanged: delta {res.get('delta')} < threshold {res.get('threshold')}. No disk write.")
+            elif st == "shielded":
+                print(f"[!] Capture Blocked by Safeguard Shield:")
+                print(f"    Reason:  {res.get('reason')}")
+            else:
+                print(f"[-] Screen capture status: {st} ({res.get('error', 'unknown')})")
+
+    elif action == "status":
+        ctx = get_active_window_context()
+        frames = engine.get_daily_frames()
+        data = {
+            "today_frames": len(frames),
+            "active_window": ctx.get("title"),
+            "active_process": ctx.get("process"),
+            "platform": ctx.get("platform"),
+            "frames_dir": str(engine.base_dir),
+        }
+        if args.json:
+            print(json.dumps(data, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 65)
+            print("  📸  CEPHALO SCREEN MEMORY ENGINE STATUS")
+            print("=" * 65)
+            print(f"  Frames Logged Today:  {len(frames)}")
+            print(f"  Active Window Title:  {ctx.get('title') or '(None / Headless)'}")
+            print(f"  Active Process:       {ctx.get('process') or '(None / Headless)'}")
+            print(f"  Platform:             {ctx.get('platform')}")
+            print(f"  Storage Directory:    {engine.base_dir}")
+            print("=" * 65)
+
+    elif action == "prune":
+        days = getattr(args, "days", 14)
+        res = engine.prune_frames(max_age_days=days)
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(f"[+] Pruned {res.get('deleted_frames', 0)} old frames older than {days} days.")
+            print(f"[+] Created {res.get('thumbnails_created', 0)} micro-thumbnails for DeepWiki scrubbing.")
+
+
+def cmd_digest(args) -> None:
+    """Generates a visual, anti-AI-slop daily cognitive executive digest."""
+    from cephalo.core.daily_digest import DailyDigestGenerator
+
+    target_date = getattr(args, "date", None)
+    gen = DailyDigestGenerator()
+    digest_data = gen.generate_digest(date_str=target_date)
+
+    if getattr(args, "copy", False):
+        from cephalo.utils.clipboard_utils import set_clipboard_text
+        md_text = gen.render_markdown(digest_data)
+        set_clipboard_text(md_text)
+        if not args.json:
+            print("[+] Daily digest markdown copied to clipboard.")
+
+    if args.json:
+        print(json.dumps(digest_data, indent=2, ensure_ascii=False))
+    else:
+        print(gen.render_markdown(digest_data))
 
 
 def main():
@@ -1458,6 +1617,45 @@ def main():
     daemon_sub.add_parser("install-task", parents=[shared_parser], help="Install Windows Scheduled Task (auto-start on logon).")
     daemon_sub.add_parser("uninstall-task", parents=[shared_parser], help="Uninstall Windows Scheduled Task.")
 
+    # Safeguard (Privacy & Blacklist Filter)
+    safe_p = subparsers.add_parser("safeguard", parents=[shared_parser], help="Manage privacy safeguards and blacklists.")
+    safe_sub = safe_p.add_subparsers(dest="safeguard_action", help="Safeguard action")
+    safe_sub.add_parser("status", parents=[shared_parser], help="View current safeguards.")
+    
+    add_proc_p = safe_sub.add_parser("add-proc", parents=[shared_parser], help="Add process to blacklist.")
+    add_proc_p.add_argument("name", type=str, help="Process name to blacklist (e.g. bitwarden)")
+
+    add_title_p = safe_sub.add_parser("add-title", parents=[shared_parser], help="Add regex pattern to title blacklist.")
+    add_title_p.add_argument("pattern", type=str, help="Regex pattern (e.g. (?i)private)")
+
+    rem_proc_p = safe_sub.add_parser("remove-proc", parents=[shared_parser], help="Remove process from blacklist.")
+    rem_proc_p.add_argument("name", type=str, help="Process name to unblock")
+
+    rem_title_p = safe_sub.add_parser("remove-title", parents=[shared_parser], help="Remove regex pattern from title blacklist.")
+    rem_title_p.add_argument("pattern", type=str, help="Regex pattern to unblock")
+
+    test_safe_p = safe_sub.add_parser("test", parents=[shared_parser], help="Test whether a title/process is shielded.")
+    test_safe_p.add_argument("title", type=str, help="Window title to test")
+    test_safe_p.add_argument("--process", type=str, default="", help="Process name to test")
+
+    # Screen Memory & Perceptual Delta Capture
+    screen_p = subparsers.add_parser("screen", parents=[shared_parser], help="Manage screen memory and perceptual delta capture.")
+    screen_sub = screen_p.add_subparsers(dest="screen_action", help="Screen memory action")
+    
+    snap_p = screen_sub.add_parser("snap", parents=[shared_parser], help="Evaluate and capture a perceptual delta keyframe.")
+    snap_p.add_argument("--force", action="store_true", help="Force keyframe capture even if delta < threshold.")
+    snap_p.add_argument("--ocr", action="store_true", help="Extract and index OCR text into vector memory.")
+
+    screen_sub.add_parser("status", parents=[shared_parser], help="View screen memory and active window status.")
+    
+    prune_p = screen_sub.add_parser("prune", parents=[shared_parser], help="Prune old keyframes while preserving thumbnails.")
+    prune_p.add_argument("--days", type=int, default=14, help="Max frame age in days (default: 14).")
+
+    # Anti-AI-Slop Daily Cognitive Executive Digest
+    digest_p = subparsers.add_parser("digest", parents=[shared_parser], help="Generate visual, anti-AI-slop daily cognitive executive digest.")
+    digest_p.add_argument("--today", action="store_true", help="Generate digest for today.")
+    digest_p.add_argument("--date", type=str, default=None, help="Target date in YYYY-MM-DD format.")
+
     args = parser.parse_args()
 
     COMMAND_HANDLERS = {
@@ -1481,6 +1679,9 @@ def main():
         "context": cmd_context,
         "wiki": cmd_wiki,
         "youtube": cmd_youtube,
+        "safeguard": cmd_safeguard,
+        "screen": cmd_screen,
+        "digest": cmd_digest,
     }
 
     if not args.command:

@@ -23,7 +23,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 BASE_DIR = ROOT_DIR
 DOCS_WIKI_DIR = ROOT_DIR / "docs" / "wiki"
 DATA_DIR = ROOT_DIR / "data"
@@ -677,6 +677,73 @@ Cephalo specifically handles:
       border-radius: 2px;
     }
 
+    /* 24-Hour Timeline Scrubber */
+    .scrubber-card {
+      background: var(--bg-card);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .scrubber-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .scrubber-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .scrubber-active-badge {
+      font-size: 0.8rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      font-weight: 600;
+    }
+    .scrubber-track {
+      position: relative;
+      margin: 15px 0 10px 0;
+    }
+    .scrubber-slider {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: #1e293b;
+      outline: none;
+      cursor: pointer;
+    }
+    .scrubber-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+    }
+    .scrubber-ticks {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+    .scrubber-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      justify-content: flex-end;
+    }
+
     /* Filter Bar */
     .filter-bar {
       display: flex;
@@ -959,6 +1026,29 @@ Cephalo specifically handles:
         </div>
       </div>
 
+      <!-- 24-Hour Timeline Scrubber & Velocity -->
+      <div class="scrubber-card">
+        <div class="scrubber-header">
+          <div class="scrubber-title">⏱️ 24-Hour Timeline Scrubber & Velocity</div>
+          <div id="scrubber-active-label" class="scrubber-active-badge">All Day (00:00 - 23:59)</div>
+        </div>
+        <div class="scrubber-track">
+          <input type="range" id="hour-slider" min="0" max="23" value="12" class="scrubber-slider" oninput="onScrubHour(this.value)" />
+          <div class="scrubber-ticks">
+            <span>00:00</span>
+            <span>04:00</span>
+            <span>08:00</span>
+            <span>12:00 (Noon)</span>
+            <span>16:00</span>
+            <span>20:00</span>
+            <span>23:59</span>
+          </div>
+        </div>
+        <div class="scrubber-actions">
+          <button class="btn-primary" style="font-size: 0.75rem; padding: 4px 10px; background: transparent; border: 1px solid var(--card-border); color: var(--text-muted);" onclick="resetScrubber()">Show All Hours</button>
+        </div>
+      </div>
+
       <!-- Memory Stream -->
       <div class="card">
         <div class="card-title">
@@ -1017,6 +1107,28 @@ Cephalo specifically handles:
     let activeCategory = 'all';
     let activeTag = null;
     let activeDate = null;
+    let activeHour = null;
+
+    function onScrubHour(val) {
+      activeHour = parseInt(val, 10);
+      const hStr = activeHour.toString().padStart(2, '0');
+      const badge = document.getElementById('scrubber-active-label');
+      badge.textContent = `Hour Window: ${hStr}:00 - ${hStr}:59`;
+      badge.style.background = 'rgba(56, 189, 248, 0.2)';
+      badge.style.color = 'var(--accent-cyan)';
+      badge.style.border = '1px solid rgba(56, 189, 248, 0.4)';
+      renderTimeline();
+    }
+
+    function resetScrubber() {
+      activeHour = null;
+      const badge = document.getElementById('scrubber-active-label');
+      badge.textContent = 'All Day (00:00 - 23:59)';
+      badge.style.background = 'rgba(16, 185, 129, 0.15)';
+      badge.style.color = 'var(--accent-emerald)';
+      badge.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+      renderTimeline();
+    }
 
     // Relative Time Formatter
     function timeAgo(dateString) {
@@ -1146,6 +1258,10 @@ Cephalo specifically handles:
         if (!showDeprecated && memo.is_deprecated) return false;
         if (activeCategory !== 'all' && memo.category !== activeCategory) return false;
         if (activeDate && !memo.timestamp.startsWith(activeDate)) return false;
+        if (activeHour !== null) {
+          const d = new Date(memo.timestamp);
+          if (d.getHours() !== activeHour) return false;
+        }
         if (activeTag && !(memo.tags || []).includes(activeTag)) return false;
 
         if (query) {
@@ -1183,6 +1299,7 @@ Cephalo specifically handles:
               <span title="${memo.timestamp}">${timeAgo(memo.timestamp)}</span>
             </div>
             <div class="memo-content">${formattedContent}</div>
+            ${memo.image_path ? `<div style="margin: 10px 0; border-radius: 6px; overflow: hidden; max-width: 320px; border: 1px solid var(--card-border);"><img src="/${memo.image_path}" alt="Screen Frame" style="width: 100%; display: block;" loading="lazy" /></div>` : ''}
             ${tagsHtml ? `<div class="memo-tags">${tagsHtml}</div>` : ''}
             ${supersedesHtml}
             <div class="memo-footer">
@@ -1300,30 +1417,58 @@ Cephalo specifically handles:
 # Sovereign Timeline & DeepWiki HTTP Server
 # ==============================================================================
 def get_timeline_records(limit: int = 500) -> List[Dict[str, Any]]:
-    """Reads memories from prompts.jsonl in reverse-chronological order."""
-    if not PROMPTS_FILE.exists():
-        return []
-
-    from embedding_pipeline import extract_tags
+    """Reads memories from prompts.jsonl and frame_index.jsonl in reverse-chronological order."""
+    from cephalo.core.embedding_pipeline import extract_tags
 
     records = []
-    with open(PROMPTS_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-                if "tags" not in rec or not rec["tags"]:
-                    rec["tags"] = extract_tags(rec.get("content", ""))
-                rec.setdefault("is_deprecated", False)
-                rec.setdefault("supersedes", "")
-                rec.setdefault("relates_to", [])
-                records.append(rec)
-            except Exception:
-                pass
+    if PROMPTS_FILE.exists():
+        with open(PROMPTS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                    if "tags" not in rec or not rec["tags"]:
+                        rec["tags"] = extract_tags(rec.get("content", ""))
+                    rec.setdefault("is_deprecated", False)
+                    rec.setdefault("supersedes", "")
+                    rec.setdefault("relates_to", [])
+                    records.append(rec)
+                except Exception:
+                    pass
 
-    records.reverse()
+    # Blend recent screen events if present
+    frames_file = DATA_DIR / "frames" / "frame_index.jsonl"
+    if frames_file.exists():
+        with open(frames_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    frec = json.loads(line)
+                    ts = frec.get("timestamp", "")
+                    title = frec.get("window_title", "Screen Snapshot")
+                    proc = frec.get("process_name", "")
+                    content = f"📸 Screen Activity: {title}" + (f" ({proc})" if proc else "")
+                    if frec.get("ocr_text"):
+                        content += f"\n\nOCR Text: {frec['ocr_text'][:200]}"
+                    records.append({
+                        "id": frec.get("id"),
+                        "timestamp": ts,
+                        "category": "screen_capture",
+                        "content": content,
+                        "tags": ["#screen", f"#{proc.replace('.exe','').lower()}"] if proc else ["#screen"],
+                        "image_path": frec.get("path"),
+                        "is_deprecated": False,
+                        "supersedes": "",
+                        "relates_to": [],
+                    })
+                except Exception:
+                    pass
+
+    records.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
     return records[:limit]
 
 
@@ -1414,6 +1559,48 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(hdata, ensure_ascii=False).encode("utf-8"))
             return
 
+        if path == "/api/digest":
+            qs = urllib.parse.parse_qs(parsed.query)
+            date_param = qs.get("date", [None])[0]
+            from cephalo.core.daily_digest import DailyDigestGenerator
+            gen = DailyDigestGenerator()
+            digest_data = gen.generate_digest(date_param)
+            self.send_response(200)
+            self._send_cors()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(digest_data, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if path == "/api/frames":
+            qs = urllib.parse.parse_qs(parsed.query)
+            date_param = qs.get("date", [None])[0]
+            from cephalo.services.screen_recorder import ScreenMemoryEngine
+            engine = ScreenMemoryEngine()
+            frames = engine.get_daily_frames(date_param)
+            self.send_response(200)
+            self._send_cors()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(frames, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if path.startswith("/data/frames/") or path.startswith("/frames/"):
+            rel_path = path.lstrip("/")
+            if rel_path.startswith("data/"):
+                img_path = ROOT_DIR / rel_path
+            else:
+                img_path = DATA_DIR / rel_path
+            if img_path.exists() and img_path.is_file():
+                self.send_response(200)
+                self._send_cors()
+                content_type = "image/webp" if img_path.suffix == ".webp" else "image/png"
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(img_path.stat().st_size))
+                self.end_headers()
+                self.wfile.write(img_path.read_bytes())
+                return
+
         if path == "/api/stats":
             hdata = get_heatmap_data()
             self.send_response(200)
@@ -1462,7 +1649,7 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
                 supersedes = data.get("supersedes")
                 source = data.get("source", "web_ui")
 
-                from embedding_pipeline import EmbeddingPipeline, create_embedder
+                from cephalo.core.embedding_pipeline import EmbeddingPipeline, create_embedder
                 embedder = create_embedder(mode="local")
                 pipeline = EmbeddingPipeline(embedder=embedder)
 

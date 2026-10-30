@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 BASE_DIR = ROOT_DIR
 CORE_PATTERNS_DIR = ROOT_DIR / "patterns"
 DATA_DIR = ROOT_DIR / "data"

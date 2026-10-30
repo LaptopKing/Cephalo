@@ -740,7 +740,7 @@ class SpecialtySynthesizer:
         else:
             # Dynamic Autonomous Deep Research for Novel / Unknown Technology or Methodology
             try:
-                from research_engine import DeepResearchEngine
+                from cephalo.research.research_engine import DeepResearchEngine
                 engine = DeepResearchEngine()
                 res = engine.synthesize_specialty(
                     topic=topic,

@@ -50,29 +50,29 @@ Install Cephalo and get the `cephalo` CLI available globally in a single command
 
 ### Windows (PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/LaptopKing/Cephalo/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/LaptopKing/Cephalo/main/scripts/install.ps1 | iex
 ```
 
 ### Linux / macOS (Bash)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LaptopKing/Cephalo/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/LaptopKing/Cephalo/main/scripts/install.sh | bash
 ```
 
 ### Manual Installation (From Source)
 ```bash
 git clone https://github.com/LaptopKing/Cephalo.git
 cd Cephalo
-.\install.ps1    # On Windows (Default: System Python)
-./install.sh     # On Linux / macOS / WSL
+.\scripts\install.ps1    # On Windows (Default: System Python)
+bash scripts/install.sh     # On Linux / macOS / WSL
 ```
 
 ### Isolated Virtual Environment (Recommended: Zero Host Pollution)
 To prevent heavy ML dependencies (LanceDB, ONNX, FastEmbed) from touching your system Python:
 ```powershell
-.\install.ps1 -UseVenv  # Creates isolated .venv and configures shims
+.\scripts\install.ps1 -UseVenv  # Creates isolated .venv and configures shims
 ```
 ```bash
-./install.sh --venv     # Creates isolated .venv on Linux / macOS / WSL
+bash scripts/install.sh --venv     # Creates isolated .venv on Linux / macOS / WSL
 ```
 
 > **Adaptive & Non-Destructive Invariant:** Cephalo respects existing user configurations and dotfiles. It never overwrites your global `CLAUDE.md`, shell configs, or hook registries. Instead, it injects scoped `<!-- CEPHALO MANAGED BLOCK START/END -->` blocks, creates timestamped `.bak` files, and keeps your private memories strictly local. Cephalo operates purely as an installed tool—background daemons never auto-commit or push to Git.
@@ -136,6 +136,47 @@ cephalo youtube "https://www.youtube.com/watch?v=VIDEO_ID" --record --category "
 ```bash
 # Assemble and copy consolidated prompt context (identity + hardware constraints + project specialty)
 cephalo context export --project "backend" --specialty "redis-caching" --copy
+```
+
+### Configurable Privacy Safeguards & Blacklist
+Control process, window title, and domain safeguards with sane out-of-the-box defaults (password managers, banking, private browsing):
+```bash
+# 1. View active safeguards and blocked process/window lists
+cephalo safeguard status
+
+# 2. Add custom application or window title pattern to blacklist
+cephalo safeguard add-proc "slack_private"
+cephalo safeguard add-title "(?i)confidential"
+
+# 3. Test active window shielding rules
+cephalo safeguard test "Private Browsing - Bank Login" --process "Bitwarden.exe"
+```
+
+### Cross-Platform Perceptual Screen Memory
+Zero-bloat automated visual awareness (Linux, macOS, Windows, WSL) using perceptual frame-difference gating (dHash / pixel delta):
+```bash
+# 1. View screen engine status and today's keyframe count
+cephalo screen status
+
+# 2. Take an on-demand perceptual delta keyframe
+cephalo screen snap
+
+# 3. Prune old keyframes (>14 days) while generating micro-thumbnails for DeepWiki scrubbing
+cephalo screen prune --days 14
+```
+
+### Anti-AI-Slop Daily Cognitive Executive Digest
+Synthesizes daily developer velocity, prompt logs, and screen keyframes into high-density visual charts (ASCII terminal & Mermaid `xychart-beta`) without conversational fluff:
+```bash
+# 1. Generate visual executive digest for today
+cephalo digest --today
+
+# 2. Generate digest for a specific past date
+cephalo digest --date "2026-10-29"
+
+# 3. Output token-dense JSON for AI agents or copy markdown to clipboard
+cephalo digest --today --json
+cephalo digest --today --copy
 ```
 
 ### Sovereign DeepWiki & Interactive Activity Dashboard
@@ -326,6 +367,7 @@ Cephalo stands on the shoulders of giants in the open-source community. Whenever
 - **[XERJ](https://github.com/xerj-org/xerj)** — High-velocity AI search engine and MCP server inspiring our token-efficient AST symbol search (`cephalo def`) and reference coding engine.
 - **[Tree-sitter](https://github.com/tree-sitter/tree-sitter)** — Incremental parsing system providing blazing fast, memory-safe AST cursors across multi-language codebases without full-file overhead.
 - **[code-refactoring-skill](https://github.com/MuhiminOsim/code-refactoring-skill)** by [@MuhiminOsim](https://github.com/MuhiminOsim) — Safe, behavior-preserving code refactoring patterns (Fowler, Clean Architecture, test-gated decomposition) used to modularize Cephalo into a clean PEP 518 package.
+- **[Windrecorder](https://github.com/yuka-friends/Windrecorder)** by [@yuka-friends](https://github.com/yuka-friends) — Open-source local memory project inspiring Cephalo's cross-platform perceptual delta screen engine, 24-hour timeline scrubber, and configurable privacy safeguards.
 
 ---
 

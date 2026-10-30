@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-set "SECOND_BRAIN_DIR=C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain"
+set "SECOND_BRAIN_DIR=%~dp0.."
 
 if not exist "%SECOND_BRAIN_DIR%\brain.py" (
     echo Error: Cephalo brain.py not found at "%SECOND_BRAIN_DIR%\brain.py"
@@ -8,6 +8,12 @@ if not exist "%SECOND_BRAIN_DIR%\brain.py" (
 )
 
 pushd "%SECOND_BRAIN_DIR%"
+
+if exist "%SECOND_BRAIN_DIR%\.venv\Scripts\python.exe" (
+    "%SECOND_BRAIN_DIR%\.venv\Scripts\python.exe" "%SECOND_BRAIN_DIR%\brain.py" %*
+    popd
+    goto :eof
+)
 
 for %%V in (Python312 Python311 Python313 Python310) do (
     if exist "%LOCALAPPDATA%\Programs\Python\%%V\python.exe" (

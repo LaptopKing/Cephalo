@@ -8,8 +8,13 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+import sys
+from pathlib import Path
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
-from embedding_pipeline import (
+from cephalo.core.embedding_pipeline import (
     Sanitizer,
     FastEmbedEmbedder,
     GoogleEmbedder,

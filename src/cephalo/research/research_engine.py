@@ -56,7 +56,7 @@ if sys.platform == "win32":
         pass
 
 # Base paths
-SCRIPT_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path(__file__).resolve().parents[3]
 PROFILE_FILE = SCRIPT_DIR / "USER_PROFILE.md"
 
 logging.basicConfig(
@@ -110,7 +110,7 @@ class DeepResearchEngine:
     }
 
     def __init__(self):
-        from web_search import WebSearchEngine
+        from cephalo.research.web_search import WebSearchEngine
         self.web_engine = WebSearchEngine()
 
     def _query_github_repo_metadata(self, owner_repo: str) -> Optional[GitHubRepoInfo]:
@@ -227,7 +227,7 @@ class DeepResearchEngine:
         Inspects top open-source repositories and extracts AST symbol signatures
         using Cephalo's CodeSymbolIndexer (Reference Coding engine inspired by XERJ).
         """
-        from symbol_extractor import CodeSymbolIndexer
+        from cephalo.core.symbol_extractor import CodeSymbolIndexer
         indexer = CodeSymbolIndexer()
         patterns: List[Dict[str, Any]] = []
 
@@ -500,7 +500,7 @@ def main():
     )
 
     if args.create:
-        from specialties_manager import SpecialtiesManager
+        from cephalo.learning.specialties_manager import SpecialtiesManager
         sm = SpecialtiesManager()
         created = sm.create_specialty(
             name=synthesized["name"],

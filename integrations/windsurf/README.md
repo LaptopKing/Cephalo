@@ -14,7 +14,7 @@ Add the following to `~/.codeium/windsurf/mcp_config.json`:
     "cephalo": {
       "command": "python",
       "args": [
-        "C:\\Users\\strider-desktop\\.gemini\\antigravity\\scratch\\second-brain\\mcp_server.py"
+        "C:\\Users\\strider-desktop\\.gemini\\antigravity\\scratch\\second-brain\\src\\cephalo\\services\\src\cephalo\services\mcp_server.py"
       ],
       "env": {
         "PYTHONIOENCODING": "utf-8"

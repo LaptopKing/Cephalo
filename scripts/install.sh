@@ -176,8 +176,8 @@ fi
 
 # 5. Link executable into user bin
 echo "[4/6] Configuring 'cephalo' CLI command..."
-chmod +x "$TARGET_DIR/cephalo"
-chmod +x "$TARGET_DIR/auto_harvest.py"
+chmod +x "$TARGET_DIR/bin/cephalo"
+chmod +x "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
 BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
 ln -sf "$TARGET_DIR/cephalo" "$BIN_DIR/cephalo"
@@ -211,14 +211,14 @@ EOF
     fi
 
     # Non-destructive hooks merge
-    merge_hooks_json "$AGY_PLUGIN/hooks.json" "$PY_CMD" "$TARGET_DIR/auto_harvest.py"
-    merge_hooks_json "$HOME/.gemini/config/hooks.json" "$PY_CMD" "$TARGET_DIR/auto_harvest.py"
+    merge_hooks_json "$AGY_PLUGIN/hooks.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
+    merge_hooks_json "$HOME/.gemini/config/hooks.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
 fi
 
 # B. Claude Code Integration (Clean MCP or Managed Block)
 if [ -d "$HOME/.claude" ]; then
     if command -v claude &> /dev/null; then
-        claude mcp add cephalo -- "$PY_CMD" "$TARGET_DIR/mcp_server.py" 2>/dev/null || true
+        claude mcp add cephalo -- "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" 2>/dev/null || true
         echo "      Registered Cephalo MCP server cleanly via 'claude mcp add'."
     fi
 

@@ -7,9 +7,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT_DIR = SCRIPT_DIR.parent if SCRIPT_DIR.name == "tests" else SCRIPT_DIR
-MCP_SERVER = ROOT_DIR / "mcp_server.py"
-if not MCP_SERVER.exists():
-    MCP_SERVER = ROOT_DIR / "src" / "cephalo" / "services" / "mcp_server.py"
+MCP_SERVER = ROOT_DIR / "src" / "cephalo" / "services" / "mcp_server.py"
 
 
 class TestMcpServer(unittest.TestCase):

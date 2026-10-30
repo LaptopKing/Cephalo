@@ -29,7 +29,7 @@ Add the following block to your client's MCP configuration:
     "cephalo": {
       "command": "python",
       "args": [
-        "C:\\Users\\strider-desktop\\.gemini\\antigravity\\scratch\\second-brain\\mcp_server.py"
+        "C:\\Users\\strider-desktop\\.gemini\\antigravity\\scratch\\second-brain\\src\\cephalo\\services\\src\cephalo\services\mcp_server.py"
       ],
       "env": {
         "PYTHONIOENCODING": "utf-8"

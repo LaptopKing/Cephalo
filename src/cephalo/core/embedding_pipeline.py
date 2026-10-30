@@ -50,7 +50,7 @@ logger = logging.getLogger("second_brain.pipeline")
 logging.getLogger("presidio-analyzer").setLevel(logging.ERROR)
 
 # Default Base Paths
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[3]
 BASE_DIR = ROOT_DIR
 DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"

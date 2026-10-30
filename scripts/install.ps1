@@ -113,7 +113,7 @@ function Merge-HooksJson {
 }
 
 # 1. Determine Target Directory
-$TargetDir = if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "brain.py"))) {
+$TargetDir = if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "brain.py"))) {`r`n    $PSScriptRoot`r`n} elseif ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "..\brain.py"))) {`r`n    (Resolve-Path (Join-Path $PSScriptRoot "..")).Path {
     $PSScriptRoot
 } elseif (Test-Path (Join-Path $HOME ".gemini\antigravity\scratch\second-brain\brain.py")) {
     Join-Path $HOME ".gemini\antigravity\scratch\second-brain"
@@ -251,19 +251,19 @@ echo Error: Python 3.10+ was not found on your system.
 exit /b 1
 "@
 
-Set-Content -Path (Join-Path $TargetDir "cephalo.bat") -Value $BatContent -Encoding ASCII
+$BinDir = Join-Path $TargetDir "bin"`r`nNew-Item -ItemType Directory -Path $BinDir -Force | Out-Null`r`nSet-Content -Path (Join-Path $BinDir "cephalo.bat") -Value $BatContent -Encoding ASCII
 
 $AgyBin = Join-Path $HOME ".gemini\antigravity\bin"
 if (Test-Path $AgyBin) {
-    Copy-Item (Join-Path $TargetDir "cephalo.bat") (Join-Path $AgyBin "cephalo.bat") -Force
+    Copy-Item (Join-Path $BinDir "cephalo.bat") (Join-Path $AgyBin "cephalo.bat") -Force
     Write-Host "      Configured cephalo.bat into Antigravity bin ($AgyBin)." -ForegroundColor Gray
 }
 
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($UserPath -notlike "*$TargetDir*") {
-    [Environment]::SetEnvironmentVariable("Path", "$UserPath;$TargetDir", "User")
-    $env:Path = "$env:Path;$TargetDir"
-    Write-Host "      Added $TargetDir to User PATH." -ForegroundColor Gray
+$BinDir = Join-Path $TargetDir "bin"`r`nif ($UserPath -notlike "*$BinDir*") {
+    [Environment]::SetEnvironmentVariable("Path", "$UserPath;$BinDir", "User")
+    $env:Path = "$env:Path;$BinDir"
+    Write-Host "      Added $BinDir to User PATH." -ForegroundColor Gray
 }
 
 # 6. Adaptive Multi-Harness Integrations
@@ -308,7 +308,7 @@ if (Test-Path $AgyBase) {
     Set-Content -Path (Join-Path $AgyRulesDir "cephalo_second_brain.md") -Value $RuleContent -Encoding UTF8
 
     # Non-destructive hooks merge
-    $AutoHarvestPath = Join-Path $TargetDir "auto_harvest.py"
+    $AutoHarvestPath = Join-Path $TargetDir "src\cephalo\learning\auto_harvest.py"
     Merge-HooksJson -HooksPath (Join-Path $PluginDir "hooks.json") -PythonExe $PythonCmd -HarvestScript $AutoHarvestPath
     Merge-HooksJson -HooksPath (Join-Path $AgyBase "config\hooks.json") -PythonExe $PythonCmd -HarvestScript $AutoHarvestPath
 }
@@ -318,7 +318,7 @@ $ClaudeDir = Join-Path $HOME ".claude"
 if (Test-Path $ClaudeDir) {
     if (Get-Command claude -ErrorAction SilentlyContinue) {
         try {
-            $McpScript = Join-Path $TargetDir "mcp_server.py"
+            $McpScript = Join-Path $TargetDir "src\cephalo\services\mcp_server.py"
             & claude mcp add cephalo -- $PythonCmd $McpScript
             Write-Host "      Registered Cephalo MCP server cleanly via 'claude mcp add'." -ForegroundColor Green
         } catch {

@@ -48,7 +48,7 @@ Before answering questions concerning past decisions, preferences, device config
 ## 4. Dual-Layer Redundancy Architecture
 Cephalo operates a two-tier safety net so nothing is ever dropped:
 1. **Agent Active Ingestion:** The agent actively runs `cephalo record` and updates `USER_PROFILE.md` when it detects user insights during the turn.
-2. **Harness Hook Autonomous Harvester (`auto_harvest.py` via `hooks.json`):** Even if an agent fails to execute the command, the harness `Stop` lifecycle hook automatically scans the raw transcript on turn completion, detects preference markers, and logs them to `prompts.jsonl`.
+2. **Harness Hook Autonomous Harvester (`src/cephalo/learning/auto_harvest.py` via `hooks.json`):** Even if an agent fails to execute the command, the harness `Stop` lifecycle hook automatically scans the raw transcript on turn completion, detects preference markers, and logs them to `prompts.jsonl`.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Complete structural breakdown of Cephalo's active core modules.
 
-## [`auto_harvest.py`](auto_harvest.py)
+## [`src/cephalo/learning/auto_harvest.py`](../../src/cephalo/learning/auto_harvest.py)
 **Lines of Code:** 437 | **Imports:** 9
 
 > Cephalo Autonomous Memory Harvester & Dynamic Context Injector (auto_harvest.py)
@@ -44,7 +44,7 @@ Universal CLI entrypoint for humans and AI agents (Antigravity, Claude Code, Cod
 
 ---
 
-## [`cephalo_daemon.py`](cephalo_daemon.py)
+## [`src/cephalo/services/cephalo_daemon.py`](../../src/cephalo/services/cephalo_daemon.py)
 **Lines of Code:** 474 | **Imports:** 12
 
 > Cephalo Always-On Background Daemon (cephalo_daemon.py)
@@ -67,7 +67,7 @@ ALL agent harnesses (Claude Code, Antigravity, Cursor, Windsurf, Copilot, Aider)
 
 ---
 
-## [`clipboard_utils.py`](clipboard_utils.py)
+## [`src/cephalo/utils/clipboard_utils.py`](../../src/cephalo/utils/clipboard_utils.py)
 **Lines of Code:** 122 | **Imports:** 6
 
 > Cephalo - Cross-Platform Silent Clipboard Utilities (clipboard_utils.py)
@@ -81,7 +81,7 @@ macOS, and Linux.
 
 ---
 
-## [`context_manager.py`](context_manager.py)
+## [`src/cephalo/core/context_manager.py`](../../src/cephalo/core/context_manager.py)
 **Lines of Code:** 84 | **Imports:** 5
 
 > Cephalo - Dynamic Context Assembler (context_manager.py)
@@ -96,7 +96,7 @@ Cephalo's USER_PROFILE.md, hardware specifications, and domain Specialties.
 
 ---
 
-## [`continuous_learner.py`](continuous_learner.py)
+## [`src/cephalo/learning/continuous_learner.py`](../../src/cephalo/learning/continuous_learner.py)
 **Lines of Code:** 459 | **Imports:** 11
 
 > Cephalo Continuous Learning Engine (continuous_learner.py)
@@ -112,7 +112,7 @@ Autonomous background knowledge harvester and memory consolidation coprocessor.
 
 ---
 
-## [`email_client.py`](email_client.py)
+## [`src/cephalo/services/email_client.py`](../../src/cephalo/services/email_client.py)
 **Lines of Code:** 283 | **Imports:** 11
 
 > Personal Second Brain - Secure Local Email Client (email_client.py)
@@ -129,7 +129,7 @@ using a dedicated App Password (e.g. Gmail / Outlook / custom domain).
 
 ---
 
-## [`embedding_pipeline.py`](embedding_pipeline.py)
+## [`src/cephalo/core/embedding_pipeline.py`](../../src/cephalo/core/embedding_pipeline.py)
 **Lines of Code:** 1087 | **Imports:** 14
 
 > Personal Second Brain - Clean, Production-Ready Embedding & Vector Storage Pipeline
@@ -175,7 +175,7 @@ Features:
 
 ---
 
-## [`mcp_server.py`](mcp_server.py)
+## [`src/cephalo/services/mcp_server.py`](../../src/cephalo/services/mcp_server.py)
 **Lines of Code:** 564 | **Imports:** 7
 
 > Cephalo Sovereign Memory - Model Context Protocol (MCP) Server
@@ -190,7 +190,7 @@ Zero-dependency, high-performance stdio MCP server for universal agent harness c
 
 ---
 
-## [`patterns_manager.py`](patterns_manager.py)
+## [`src/cephalo/core/patterns_manager.py`](../../src/cephalo/core/patterns_manager.py)
 **Lines of Code:** 144 | **Imports:** 6
 
 > Cephalo - Cognitive Patterns Manager (patterns_manager.py)
@@ -206,7 +206,7 @@ memory and user constraints.
 
 ---
 
-## [`research_engine.py`](research_engine.py)
+## [`src/cephalo/research/research_engine.py`](../../src/cephalo/research/research_engine.py)
 **Lines of Code:** 541 | **Imports:** 13
 
 > Cephalo Deep Research & Specialty Synthesis Engine (research_engine.py)
@@ -226,7 +226,7 @@ and craftsmanship standards for investigating topics and creating specialties.
 
 ---
 
-## [`serp_renderer.py`](serp_renderer.py)
+## [`src/cephalo/research/serp_renderer.py`](../../src/cephalo/research/serp_renderer.py)
 **Lines of Code:** 492 | **Imports:** 7
 
 > Cephalo SERP & Generative UI Renderer (serp_renderer.py)
@@ -245,7 +245,7 @@ for Antigravity chat (<agent-embed>), Claude Code, Cursor, Windsurf, and web bro
 
 ---
 
-## [`specialties_manager.py`](specialties_manager.py)
+## [`src/cephalo/learning/specialties_manager.py`](../../src/cephalo/learning/specialties_manager.py)
 **Lines of Code:** 454 | **Imports:** 8
 
 > Specialties Manager for Personal Second Brain
@@ -262,7 +262,7 @@ Manages the domain expertise layer in the Second Brain hierarchy:
 
 ---
 
-## [`specialties_synthesizer.py`](specialties_synthesizer.py)
+## [`src/cephalo/learning/specialties_synthesizer.py`](../../src/cephalo/learning/specialties_synthesizer.py)
 **Lines of Code:** 818 | **Imports:** 4
 
 > Cephalo Autonomous Specialty Synthesizer & Knowledge Engine
@@ -281,7 +281,7 @@ Provides automated knowledge synthesis and specialty generation for:
 
 ---
 
-## [`symbol_extractor.py`](symbol_extractor.py)
+## [`src/cephalo/core/symbol_extractor.py`](../../src/cephalo/core/symbol_extractor.py)
 **Lines of Code:** 565 | **Imports:** 11
 
 > Cephalo - AST Code Symbol & Definition Indexer (symbol_extractor.py)
@@ -299,7 +299,7 @@ code into AST nodes and returning exact definitions, line numbers, and signature
 
 ---
 
-## [`web_search.py`](web_search.py)
+## [`src/cephalo/research/web_search.py`](../../src/cephalo/research/web_search.py)
 **Lines of Code:** 1155 | **Imports:** 17
 
 > Cephalo - Web Search & Sovereign SERP Intelligence Engine (web_search.py)
@@ -323,7 +323,7 @@ extraction, and interactive generative UI rendering.
 
 ---
 
-## [`webhook_server.py`](webhook_server.py)
+## [`src/cephalo/services/webhook_server.py`](../../src/cephalo/services/webhook_server.py)
 **Lines of Code:** 341 | **Imports:** 13
 
 > Cephalo Multi-Channel Quick Capture & Webhook Ingress Gateway (webhook_server.py)
@@ -351,7 +351,7 @@ Allows instant quick-capture from:
 
 ---
 
-## [`wiki_generator.py`](wiki_generator.py)
+## [`src/cephalo/research/wiki_generator.py`](../../src/cephalo/research/wiki_generator.py)
 **Lines of Code:** 1512 | **Imports:** 9
 
 > Cephalo - Sovereign Codebase Wiki & Codemap Engine (wiki_generator.py)
