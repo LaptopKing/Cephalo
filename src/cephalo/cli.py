@@ -63,6 +63,8 @@ def parse_profile_sections(content: str) -> List[Dict[str, Any]]:
         if line.startswith("## "):
             if current_lines:
                 sec_text = "\n".join(current_lines).strip()
+                while sec_text.endswith("---"):
+                    sec_text = sec_text[:-3].strip()
                 sections.append({
                     "title": current_title,
                     "content": sec_text,
@@ -75,6 +77,8 @@ def parse_profile_sections(content: str) -> List[Dict[str, Any]]:
 
     if current_lines:
         sec_text = "\n".join(current_lines).strip()
+        while sec_text.endswith("---"):
+            sec_text = sec_text[:-3].strip()
         sections.append({
             "title": current_title,
             "content": sec_text,
@@ -84,7 +88,7 @@ def parse_profile_sections(content: str) -> List[Dict[str, Any]]:
 
 
 def cmd_profile(args) -> None:
-    """Reads or extracts sections from USER_PROFILE.md with token-efficient filters."""
+    """Reads, extracts, or atomically mutates sections in USER_PROFILE.md with token-efficient filters."""
     if not PROFILE_FILE.exists():
         if args.json:
             print(json.dumps({"error": "USER_PROFILE.md not found"}, indent=2))
@@ -94,6 +98,94 @@ def cmd_profile(args) -> None:
 
     content = PROFILE_FILE.read_text(encoding="utf-8")
     sections = parse_profile_sections(content)
+
+    # 1. Sectional Profile Mutator (--update-section)
+    target_update = getattr(args, "update_section", None)
+    if target_update:
+        append_text = getattr(args, "append", None)
+        replace_text = getattr(args, "replace", None)
+
+        if not append_text and not replace_text:
+            msg = "Error: Must specify either --append <text> or --replace <text> with --update-section."
+            if args.json:
+                print(json.dumps({"error": msg}, indent=2))
+            else:
+                print(msg)
+            return
+
+        req_clean = target_update.strip().lower()
+        matched_idx = None
+        if req_clean.isdigit():
+            idx = int(req_clean)
+            if 1 <= idx <= len(sections):
+                matched_idx = idx - 1
+        if matched_idx is None:
+            for i, s in enumerate(sections):
+                if req_clean in s["title"].lower():
+                    matched_idx = i
+                    break
+
+        if matched_idx is None:
+            avail = [s["title"] for s in sections]
+            if args.json:
+                print(json.dumps({"error": f"Section '{target_update}' not found", "available_sections": avail}, indent=2))
+            else:
+                print(f"Error: Section '{target_update}' not found in USER_PROFILE.md.")
+                print(f"Available sections: {', '.join(avail[:6])}...")
+            return
+
+        matched = sections[matched_idx]
+        old_content = matched["content"]
+
+        if replace_text:
+            header_prefix = f"## {matched['title']}"
+            rep = replace_text.strip()
+            if not rep.startswith("## "):
+                body = f"{header_prefix}\n\n{rep}"
+            else:
+                body = rep
+            while body.endswith("---"):
+                body = body[:-3].strip()
+            new_sec_text = body
+            action_desc = "replaced"
+        else:
+            addition = append_text.strip()
+            if not addition.startswith(("-", "*", "1.", "##", "#")):
+                addition = f"- {addition}"
+            content_clean = old_content.rstrip()
+            while content_clean.endswith("---"):
+                content_clean = content_clean[:-3].rstrip()
+            new_sec_text = f"{content_clean}\n{addition}"
+            action_desc = "appended"
+
+        sections[matched_idx]["content"] = new_sec_text
+        sections[matched_idx]["tokens_est"] = round(len(new_sec_text) / 3.8)
+
+        # Atomic backup and safe disk write
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        bak_file = PROFILE_FILE.parent / f"USER_PROFILE.md.bak.{timestamp}"
+        try:
+            bak_file.write_text(content, encoding="utf-8")
+        except Exception:
+            pass
+
+        reconstructed = "\n\n---\n\n".join(s["content"].strip() for s in sections) + "\n"
+        temp_file = PROFILE_FILE.parent / f"USER_PROFILE.md.tmp.{os.getpid()}"
+        temp_file.write_text(reconstructed, encoding="utf-8")
+        temp_file.replace(PROFILE_FILE)
+
+        if args.json:
+            print(json.dumps({
+                "status": "success",
+                "action": action_desc,
+                "section": matched["title"],
+                "tokens_est": sections[matched_idx]["tokens_est"],
+                "backup_path": str(bak_file)
+            }, indent=2, ensure_ascii=False))
+        else:
+            print(f"[+] Successfully {action_desc} content to section '{matched['title']}' in USER_PROFILE.md (~{sections[matched_idx]['tokens_est']} tokens).")
+            print(f"[+] Safety backup saved to: {bak_file.name}")
+        return
 
     if getattr(args, "list_sections", False):
         if args.json:
@@ -288,6 +380,29 @@ def cmd_search(args) -> None:
         tag=tag,
         include_deprecated=include_deprecated,
     )
+
+    min_score = getattr(args, "min_score", None)
+    if min_score is not None:
+        filtered = []
+        for r in results:
+            if "_relevance_score" in r:
+                if float(r["_relevance_score"]) >= min_score:
+                    filtered.append(r)
+            elif "_score" in r:
+                if float(r["_score"]) >= min_score:
+                    filtered.append(r)
+            elif "_distance" in r:
+                dist = float(r["_distance"])
+                if min_score >= 1.0:
+                    if dist <= min_score:
+                        filtered.append(r)
+                else:
+                    sim = 1.0 / (1.0 + dist)
+                    if sim >= min_score:
+                        filtered.append(r)
+            else:
+                filtered.append(r)
+        results = filtered
 
     if getattr(args, "copy", False):
         from cephalo.utils.clipboard_utils import set_clipboard_text
@@ -1510,9 +1625,12 @@ def main():
     subparsers.add_parser("status", parents=[shared_parser], help="Display memory status, counts, and health.")
 
     # Profile
-    profile_p = subparsers.add_parser("profile", parents=[shared_parser], help="Display or read USER_PROFILE.md.")
+    profile_p = subparsers.add_parser("profile", parents=[shared_parser], help="Display, extract, or update USER_PROFILE.md.")
     profile_p.add_argument("--section", "-s", type=str, default=None, help="Extract specific section by title keyword or index (e.g. cinema, hardware, car, rules).")
     profile_p.add_argument("--list-sections", action="store_true", help="List all available sections and token estimates in USER_PROFILE.md.")
+    profile_p.add_argument("--update-section", type=str, default=None, help="Section title keyword or index to update (e.g. cinema, rules, 2).")
+    profile_p.add_argument("--append", type=str, default=None, help="Text bullet or note to append to the target section.")
+    profile_p.add_argument("--replace", type=str, default=None, help="New content to completely replace the target section body.")
 
     # Search
     search_p = subparsers.add_parser("search", parents=[shared_parser], help="Search memory using hybrid, vector, or keyword matching.")
@@ -1521,6 +1639,7 @@ def main():
     search_p.add_argument("--where", type=str, default=None, help="SQL filter expression.")
     search_p.add_argument("--limit", type=int, default=3, help="Max results to return (default: 3).")
     search_p.add_argument("--compact", action="store_true", help="Output high-density, token-efficient results (strips verbose IDs and metadata).")
+    search_p.add_argument("--min-score", "--threshold", dest="min_score", type=float, default=None, help="Relevance score floor or max distance threshold to prune low-confidence noise.")
     search_p.add_argument("--tag", type=str, default=None, help="Filter results by tag (e.g. #cinema/hdr or cinema).")
     search_p.add_argument("--all", "--include-deprecated", dest="include_deprecated", action="store_true", help="Include superseded/deprecated memories in search results.")
 

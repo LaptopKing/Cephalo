@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "cephalo": {
+      "command": "{{PYTHON_CMD}}",
+      "args": [
+        "{{CEPHALO_DIR}}/src/cephalo/services/mcp_server.py"
+      ],
+      "env": {
+        "PYTHONPATH": "{{CEPHALO_DIR}}/src",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}

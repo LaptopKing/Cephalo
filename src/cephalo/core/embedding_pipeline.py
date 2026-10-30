@@ -26,6 +26,11 @@ import math
 import os
 import re
 import sys
+import ctypes
+import warnings
+
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.jit")
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="fastembed")
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -286,6 +291,40 @@ class BaseEmbedder(ABC):
         return self.embed_texts([query])[0]
 
 
+def get_safe_onnx_providers() -> List[str]:
+    """Returns verified ONNX runtime execution providers with zero stderr noise.
+
+    Prevents noisy stderr error dumps on Windows/Linux systems when CUDA/TensorRT
+    execution providers are reported by onnxruntime but missing driver/cuBLAS DLLs.
+    """
+    providers: List[str] = []
+    try:
+        import onnxruntime as ort
+        available = ort.get_available_providers()
+        if "CUDAExecutionProvider" in available:
+            capi_dir = os.path.join(os.path.dirname(ort.__file__), "capi")
+            if sys.platform == "win32":
+                cuda_dll = os.path.join(capi_dir, "onnxruntime_providers_cuda.dll")
+                if os.path.exists(cuda_dll):
+                    try:
+                        ctypes.CDLL(cuda_dll)
+                        providers.append("CUDAExecutionProvider")
+                    except Exception:
+                        pass
+            else:
+                cuda_so = os.path.join(capi_dir, "libonnxruntime_providers_cuda.so")
+                if os.path.exists(cuda_so):
+                    try:
+                        ctypes.CDLL(cuda_so)
+                        providers.append("CUDAExecutionProvider")
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    providers.append("CPUExecutionProvider")
+    return providers
+
+
 class FastEmbedEmbedder(BaseEmbedder):
     """Mode A: Local / Zero-Leak Embedding via FastEmbed.
     
@@ -312,16 +351,8 @@ class FastEmbedEmbedder(BaseEmbedder):
         self._model_name = model_name
         self._mode = "local"
         
-        # On-Demand GPU Provider Configuration with Automated CPU Fallback
-        providers = []
-        try:
-            import onnxruntime as ort
-            available_providers = ort.get_available_providers()
-            if "CUDAExecutionProvider" in available_providers:
-                providers.append("CUDAExecutionProvider")
-        except Exception:
-            pass
-        providers.append("CPUExecutionProvider")
+        # Zero-Noise GPU Provider Configuration with Automated CPU Fallback
+        providers = get_safe_onnx_providers()
 
         try:
             from fastembed import TextEmbedding

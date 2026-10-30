@@ -1,11 +1,12 @@
 {
   "mcpServers": {
     "cephalo": {
-      "command": "python",
+      "command": "{{PYTHON_CMD}}",
       "args": [
-        "C:\\Users\\strider-desktop\\.gemini\\antigravity\\scratch\\second-brain\\src\\cephalo\\services\\src\cephalo\services\mcp_server.py"
+        "{{CEPHALO_DIR}}/src/cephalo/services/mcp_server.py"
       ],
       "env": {
+        "PYTHONPATH": "{{CEPHALO_DIR}}/src",
         "PYTHONIOENCODING": "utf-8"
       }
     }

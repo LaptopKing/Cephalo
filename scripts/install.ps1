@@ -112,6 +112,46 @@ function Merge-HooksJson {
     Write-Host "      Safely merged Cephalo hooks into $HooksPath (no other hooks touched)." -ForegroundColor Green
 }
 
+# Helper: Safely merge MCP server configuration non-destructively
+function Merge-McpConfig {
+    param (
+        [string]$McpPath,
+        [string]$PythonExe,
+        [string]$McpServerScript,
+        [string]$SrcDir
+    )
+    $CephaloEntry = @{
+        command = $PythonExe
+        args = @($McpServerScript)
+        env = @{
+            PYTHONPATH = $SrcDir
+            PYTHONIOENCODING = "utf-8"
+        }
+    }
+
+    $data = @{ mcpServers = @{} }
+    if (Test-Path $McpPath) {
+        try {
+            $raw = Get-Content -Path $McpPath -Raw -Encoding UTF8
+            if ($raw.Trim()) {
+                $data = $raw | ConvertFrom-Json -AsHashtable
+            }
+        } catch {}
+    } else {
+        $parent = Split-Path $McpPath -Parent
+        if ($parent -and -not (Test-Path $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+    }
+
+    if (-not $data.ContainsKey("mcpServers") -or $null -eq $data["mcpServers"]) {
+        $data["mcpServers"] = @{}
+    }
+    $data["mcpServers"]["cephalo"] = $CephaloEntry
+    $updatedJson = $data | ConvertTo-Json -Depth 10
+    Set-Content -Path $McpPath -Value $updatedJson -Encoding UTF8
+}
+
 # 1. Determine Target Directory
 $TargetDir = if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "brain.py"))) {`r`n    $PSScriptRoot`r`n} elseif ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "..\brain.py"))) {`r`n    (Resolve-Path (Join-Path $PSScriptRoot "..")).Path {
     $PSScriptRoot
@@ -314,6 +354,13 @@ if (Test-Path $AgyBase) {
     $AutoHarvestPath = Join-Path $TargetDir "src\cephalo\learning\auto_harvest.py"
     Merge-HooksJson -HooksPath (Join-Path $PluginDir "hooks.json") -PythonExe $PythonCmd -HarvestScript $AutoHarvestPath
     Merge-HooksJson -HooksPath (Join-Path $AgyBase "config\hooks.json") -PythonExe $PythonCmd -HarvestScript $AutoHarvestPath
+
+    # Native MCP Integration as Installation Default
+    $McpServerPath = Join-Path $TargetDir "src\cephalo\services\mcp_server.py"
+    $SrcPath = Join-Path $TargetDir "src"
+    Merge-McpConfig -McpPath (Join-Path $PluginDir "mcp_config.json") -PythonExe $PythonCmd -McpServerScript $McpServerPath -SrcDir $SrcPath
+    Merge-McpConfig -McpPath (Join-Path $AgyBase "config\mcp_config.json") -PythonExe $PythonCmd -McpServerScript $McpServerPath -SrcDir $SrcPath
+    Write-Host "      Configured Cephalo stdio MCP server as default in Antigravity." -ForegroundColor Green
 }
 
 # B. Claude Code Non-Destructive Integration
@@ -338,6 +385,19 @@ if (Test-Path $ClaudeDir) {
 - **Autonomous Capture:** Record preferences & decisions immediately (`cephalo record "<statement>" --category "<category>"`).
 "@
     Merge-ManagedBlock -FilePath $ClaudeRuleTarget -BlockContent $ClaudeBlock
+}
+# C. Cursor IDE Non-Destructive MCP Integration (Installation Default)
+$CursorStorage = Join-Path $env:APPDATA "Cursor\User\globalStorage\rooveterinaryinc.cursor-mcp"
+if (Test-Path (Split-Path $CursorStorage -Parent)) {
+    Merge-McpConfig -McpPath (Join-Path $CursorStorage "mcp.json") -PythonExe $PythonCmd -McpServerScript $McpServerPath -SrcDir $SrcPath
+    Write-Host "      Configured Cephalo MCP server as default in Cursor." -ForegroundColor Green
+}
+
+# D. Windsurf Cascade Non-Destructive MCP Integration (Installation Default)
+$WindsurfConfig = Join-Path $HOME ".codeium\windsurf\mcp_config.json"
+if (Test-Path (Split-Path $WindsurfConfig -Parent)) {
+    Merge-McpConfig -McpPath $WindsurfConfig -PythonExe $PythonCmd -McpServerScript $McpServerPath -SrcDir $SrcPath
+    Write-Host "      Configured Cephalo MCP server as default in Windsurf." -ForegroundColor Green
 }
 
 # 7. Verify Installation & Database Health

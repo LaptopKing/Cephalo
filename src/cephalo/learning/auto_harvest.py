@@ -26,6 +26,9 @@ import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.jit")
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="fastembed")
 
 # Force UTF-8 on Windows terminal/pipes
 if sys.platform == "win32":
@@ -219,7 +222,9 @@ def query_relevant_memory(query_text: str) -> Optional[Tuple[str, str, float]]:
         if tbl.count_rows() == 0:
             return None
 
-        embedder = TextEmbedding(model_name="Qwen/Qwen3-Embedding-0.6B-Q")
+        from cephalo.core.embedding_pipeline import get_safe_onnx_providers
+        safe_providers = get_safe_onnx_providers()
+        embedder = TextEmbedding(model_name="Qwen/Qwen3-Embedding-0.6B-Q", providers=safe_providers)
         vec = list(embedder.embed([query_text]))[0]
 
         results = tbl.search(vec).limit(1).to_list()

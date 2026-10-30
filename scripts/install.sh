@@ -113,6 +113,47 @@ data['cephalo-autonomous-brain'] = {
     'Stop': [{'type': 'command', 'command': f'\"{py_exe}\" \"{harvest}\" --stop-hook', 'timeout': 15}]
 }
 
+# Helper: Safely merge MCP server configuration non-destructively
+merge_mcp_config() {
+    local mcp_file="$1"
+    local py_cmd="$2"
+    local mcp_server="$3"
+    local src_dir="$4"
+
+    mkdir -p "$(dirname "$mcp_file")"
+    python3 -c "
+import sys, json, os
+
+path = sys.argv[1]
+py_exe = sys.argv[2]
+server = sys.argv[3]
+src = sys.argv[4]
+
+data = {'mcpServers': {}}
+if os.path.exists(path):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        data = {'mcpServers': {}}
+
+if 'mcpServers' not in data:
+    data['mcpServers'] = {}
+
+data['mcpServers']['cephalo'] = {
+    'command': py_exe,
+    'args': [server],
+    'env': {
+        'PYTHONPATH': src,
+        'PYTHONIOENCODING': 'utf-8'
+    }
+}
+
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(data, f, indent=2)
+" "$mcp_file" "$py_cmd" "$mcp_server" "$src_dir"
+}
+
 with open(path, 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2)
 " "$hooks_file" "$py_cmd" "$harvest_path"
@@ -216,6 +257,11 @@ EOF
     # Non-destructive hooks merge
     merge_hooks_json "$AGY_PLUGIN/hooks.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
     merge_hooks_json "$HOME/.gemini/config/hooks.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
+
+    # Native MCP Integration as Installation Default
+    merge_mcp_config "$AGY_PLUGIN/mcp_config.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+    merge_mcp_config "$HOME/.gemini/config/mcp_config.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+    echo "      Configured Cephalo stdio MCP server as default in Antigravity."
 fi
 
 # B. Claude Code Integration (Clean MCP or Managed Block)
@@ -232,6 +278,19 @@ if [ -d "$HOME/.claude" ]; then
 - **Grounding Invariant:** Consult Cephalo before answering past preferences or decisions (\`cephalo search \"<query>\" --json\`).
 - **Autonomous Capture:** Record preferences & decisions immediately (\`cephalo record \"<statement>\" --category \"<category>\"\`)."
     merge_managed_block "$CLAUDE_TARGET" "$CLAUDE_BLOCK"
+fi
+# C. Cursor IDE Non-Destructive MCP Integration (Installation Default)
+CURSOR_STORAGE="$HOME/.cursor/mcp.json"
+if [ -d "$HOME/.cursor" ]; then
+    merge_mcp_config "$CURSOR_STORAGE" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+    echo "      Configured Cephalo MCP server as default in Cursor."
+fi
+
+# D. Windsurf Cascade Non-Destructive MCP Integration (Installation Default)
+WINDSURF_CONFIG="$HOME/.codeium/windsurf/mcp_config.json"
+if [ -d "$HOME/.codeium/windsurf" ]; then
+    merge_mcp_config "$WINDSURF_CONFIG" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+    echo "      Configured Cephalo MCP server as default in Windsurf."
 fi
 
 # 7. Verify Installation
