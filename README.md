@@ -73,21 +73,36 @@ How Cephalo compares to traditional cloud agent memory architectures:
 
 ---
 
-## 3. 1-Command Quick Install
+## 3. Quick Install
 
-Install Cephalo and get the `cephalo` CLI available globally in a single command:
+Install Cephalo directly through your AI agent session, or run a 1-line terminal command:
 
-### Windows (PowerShell)
+### 🤖 Install via AI Agent Prompt (Zero-Terminal Setup)
+
+If you are already running an AI pair-programming session in **Google Antigravity**, **Anthropic Claude Code**, **Cursor**, **OpenAI Codex**, or **Windsurf**, simply copy-paste this prompt directly into your agent chat:
+
+```markdown
+Install Cephalo as my sovereign local second brain from https://github.com/LaptopKing/Cephalo.
+1. Clone the repository and run the adaptive installer (use -UseVenv on Windows or --venv on Linux/macOS for an isolated virtual environment to prevent host pollution).
+2. Verify installation by running `cephalo status`.
+3. Configure this agent session to consult Cephalo memory at the start of tasks (`cephalo search "<query>" --json`) and autonomously record technical decisions and constraints (`cephalo record "<decision>" --category "<cat>"`).
+```
+
+---
+
+### Direct Terminal Installation (1-Command)
+
+#### Windows (PowerShell)
 ```powershell
 irm https://raw.githubusercontent.com/LaptopKing/Cephalo/main/scripts/install.ps1 | iex
 ```
 
-### Linux / macOS (Bash)
+#### Linux / macOS (Bash)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LaptopKing/Cephalo/main/scripts/install.sh | bash
 ```
 
-### Manual Installation (From Source)
+#### Manual Installation (From Source)
 ```bash
 git clone https://github.com/LaptopKing/Cephalo.git
 cd Cephalo
@@ -95,7 +110,7 @@ cd Cephalo
 bash scripts/install.sh     # On Linux / macOS / WSL
 ```
 
-### Isolated Virtual Environment (Recommended: Zero Host Pollution)
+#### Isolated Virtual Environment (Recommended: Zero Host Pollution)
 To prevent heavy ML dependencies (LanceDB, ONNX, FastEmbed) from touching your system Python:
 ```powershell
 .\scripts\install.ps1 -UseVenv  # Creates isolated .venv and configures shims
