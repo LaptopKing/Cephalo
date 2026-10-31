@@ -18,6 +18,34 @@
 
 ---
 
+## Stop Starting from Scratch in Every Chat
+
+Every developer using AI coding agents lives in the exact same frustrating amnesia loop:
+
+> **New Chat → Re-explain your tech stack → Re-explain your constraints → Agent repeats yesterday's mistakes → Context window fills up → Start fresh chat from zero.**
+
+An agent on its 200th session is no smarter than on Day 1 because frontier LLMs **have no permanent memory of you**. Every context wipe silently erodes your velocity.
+
+**Cephalo breaks this loop.**
+
+Instead of letting agents forget, Cephalo acts as an omnipresent, local-first Second Brain that gives every AI agent—across **Google Antigravity**, **Anthropic Claude Code**, **OpenAI Codex**, and **Cursor**—a shared, permanent, zero-leak cognitive memory.
+
+```mermaid
+flowchart LR
+    A["1. Live Turn Activity\n(Decisions, Fixes, Constraints)"] --> B["2. Zero-Leak Shield\n(Scrub Secrets & PII In-Process)"]
+    B --> C["3. Embedded LanceDB\n(Dense Vectors + BM25 FTS)"]
+    C --> D["4. Specialties Engine\n(Auto-Synthesize Domain Docs)"]
+    D --> E["5. Sovereign Recall\n(Instant Context Injected in Any Agent)"]
+    E --> A
+```
+
+### The Compounding Payoff
+* **Day 1:** You record your stack decisions, negative constraints, and hardware profiles once.
+* **Week 2:** Any agent you spin up across different harnesses immediately respects your rules without prompting.
+* **Month 3:** Your personal coprocessor has retained hundreds of verified architectural patterns and domain specialties. Your pair-programming sessions are 10× sharper, running completely in-process on your local NVMe for $0.
+
+---
+
 ## 1. Overview
 
 > [!NOTE]
@@ -34,13 +62,14 @@ Inspired by the cephalopod — where a central cognitive core orchestrates semi-
 
 How Cephalo compares to traditional cloud agent memory architectures:
 
-| Architectural Vector | Cloud Memory SaaS (Mem0, Pinecone, OpenAI Threads) | Cephalo (Local-First Sovereign Core) | Verified Technical Difference |
+| Architectural Vector | Cloud Memory SaaS (Mem0, Pinecone, Hosted Threads) | Cephalo (Local-First Sovereign Core) | Verified Technical Difference |
 | :--- | :--- | :--- | :--- |
-| **Data Privacy** | Raw text, API keys & notes sent over TLS to cloud DBs | **Zero-Leak In-Process Shield** | Deterministic regex, Shannon entropy guards, and local GLiNER scrub secrets *before* writing to disk. |
-| **Embedding Cost** | Per-token billing via external APIs (OpenAI, Voyage) | **100% Free & Local** | In-process ONNX Runtime using Qwen3 (1024d) embeddings. Zero cloud API calls or monthly bills. |
+| **Sovereignty & Privacy** | Raw text & notes sent over TLS to third-party cloud DBs | **Zero-Leak In-Process Shield** | Deterministic regex, Shannon entropy guards, and local GLiNER scrub secrets *before* writing to disk. |
+| **Embedding Cost** | Per-token billing via external APIs ($$$/month) | **100% Free & Local** | In-process ONNX Runtime using Qwen3 (1024d) embeddings. Zero cloud API calls or monthly bills. |
 | **Storage Latency** | Remote network round-trip (100ms – 500ms per query) | **Embedded Columnar (<15ms)** | LanceDB runs in-process via Apache Arrow zero-copy memory; native hybrid search (Dense Vectors + BM25). |
 | **Web Research** | Cloud scrapers with subscription paywalls | **Built-in Static & Chromium Crawler** | Zero-key DuckDuckGo search + Playwright Chromium dynamic crawler for JavaScript SPAs. |
 | **Portability** | Proprietary cloud SDK lock-in | **Universal CLI & Agent Protocol** | Standardized CLI (`cephalo`) with `--json` output and universal manifests ([`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md)). |
+| **Memory Evolution** | Static key-value or raw conversation dumps | **Compounding Specialties Engine** | Dynamically synthesizes domain modules (`Project -> Specialties -> Preferences`) that compound over time. |
 
 ---
 
@@ -368,6 +397,7 @@ Cephalo stands on the shoulders of giants in the open-source community. Whenever
 - **[Tree-sitter](https://github.com/tree-sitter/tree-sitter)** — Incremental parsing system providing blazing fast, memory-safe AST cursors across multi-language codebases without full-file overhead.
 - **[code-refactoring-skill](https://github.com/MuhiminOsim/code-refactoring-skill)** by [@MuhiminOsim](https://github.com/MuhiminOsim) — Safe, behavior-preserving code refactoring patterns (Fowler, Clean Architecture, test-gated decomposition) used to modularize Cephalo into a clean PEP 518 package.
 - **[Windrecorder](https://github.com/yuka-friends/Windrecorder)** by [@yuka-friends](https://github.com/yuka-friends) — Open-source local memory project inspiring Cephalo's cross-platform perceptual delta screen engine, 24-hour timeline scrubber, and configurable privacy safeguards.
+- **[cheat-on-content](https://github.com/XBuilderLAB/cheat-on-content)** by [@XBuilderLAB](https://github.com/XBuilderLAB) — Open-source agent skill workflow inspiring Cephalo's compounding closed-loop narrative, anti-amnesia positioning, and calibrated feedback philosophy.
 
 ---
 
