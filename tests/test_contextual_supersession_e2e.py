@@ -5,9 +5,13 @@ End-to-End Integration Tests for Cephalo Contextual Preference Invalidation and 
 
 import json
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+# Ensure src is in sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from cephalo.core.embedding_pipeline import BaseEmbedder, EmbeddingPipeline
 

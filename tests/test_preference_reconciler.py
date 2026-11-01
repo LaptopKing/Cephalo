@@ -4,9 +4,13 @@ Unit tests for Cephalo Autonomous Contextual Preference Reconciler (Multilingual
 """
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+# Ensure src is in sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from cephalo.core.preference_reconciler import PreferenceReconciler
 
