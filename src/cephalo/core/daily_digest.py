@@ -137,11 +137,23 @@ class DailyDigestGenerator:
         total_events = len(prompts) + len(screens)
         active_hours = sorted(hourly_counts.keys())
 
+        # Calculate Developer Main Character & Attention Dominance (Situation Monitor Algorithm)
+        from cephalo.core.pattern_engine import DeveloperPatternEngine
+        pattern_engine = DeveloperPatternEngine()
+        all_texts = []
+        for p in prompts:
+            all_texts.append(p.get("text") or p.get("sanitized_text") or p.get("content") or "")
+        for s in screens:
+            all_texts.append((s.get("ocr_text") or "") + " " + (s.get("window_title") or ""))
+
+        main_char = pattern_engine.calculate_developer_main_character(all_texts)
+
         # Generate Visual Representations
         ascii_chart = self._render_ascii_chart(hourly_counts)
         mermaid_chart = self._render_mermaid_chart(hourly_counts)
 
         return {
+            "developer_main_character": main_char,
             "date": target_date,
             "total_events": total_events,
             "prompts_count": len(prompts),
@@ -233,9 +245,29 @@ class DailyDigestGenerator:
             md.append("```")
             md.append("")
 
+        # Developer Main Character Panel (Situation Monitor)
+        dmc = digest.get("developer_main_character", {})
+        if dmc and dmc.get("main_character"):
+            focus_badge = "🟢 Deep Flow" if dmc.get("focus_state") == "deep_flow" else ("🟡 Dual Focus" if dmc.get("focus_state") == "dual_focus" else "⚪ Fragmented")
+            md.extend([
+                "### 2. Developer Attention Dominance (Main Character)",
+                "",
+                f"> **Primary Focus Entity:** `{dmc['main_character']}` ({dmc['top_mentions']} mentions) | **Dominance Score:** `{dmc['dominance_score']}%` [{focus_badge}]",
+                "",
+            ])
+            if dmc.get("rankings"):
+                md.extend([
+                    "| Entity / Symbol | Mentions | Dominance Ratio |",
+                    "| :--- | :---: | :--- |",
+                ])
+                for r in dmc["rankings"][:5]:
+                    rel_bar = "█" * max(1, min(10, r['count']))
+                    md.append(f"| `{r['name']}` | {r['count']} | `{rel_bar}` |")
+                md.append("")
+
         # Category and Process Breakdown Tables
         md.extend([
-            "### 2. Category & Focus Distribution",
+            "### 3. Category & Focus Distribution",
             "",
             "| Focus Domain / Category | Events | Relative Velocity |",
             "| :--- | :---: | :--- |",
@@ -249,7 +281,7 @@ class DailyDigestGenerator:
         if digest["active_processes"]:
             md.extend([
                 "",
-                "### 3. Active Workspace Tools",
+                "### 4. Active Workspace Tools",
                 "",
                 "| Application Process | Screen Keyframes | Workspace Share |",
                 "| :--- | :---: | :--- |",

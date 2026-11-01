@@ -227,26 +227,123 @@ def query_relevant_memory(query_text: str) -> Optional[Tuple[str, str, float]]:
         embedder = TextEmbedding(model_name="Qwen/Qwen3-Embedding-0.6B-Q", providers=safe_providers)
         vec = list(embedder.embed([query_text]))[0]
 
-        results = tbl.search(vec).limit(1).to_list()
+        where_cond = "(is_deprecated IS NULL OR is_deprecated = false)" if "is_deprecated" in tbl.schema.names else None
+        search_builder = tbl.search(vec)
+        if where_cond:
+            search_builder = search_builder.where(where_cond)
+        results = search_builder.limit(5).to_list()
         if not results:
             return None
 
-        top = results[0]
-        dist = top.get("_distance", 2.0)
+        # Filter by threshold and ignore generic chat if distance is weak
+        valid = []
+        for r in results:
+            dist = r.get("_distance", 2.0)
+            cat = r.get("category", "")
+            if cat in ("user_prompt", "general") and dist > 1.15:
+                continue
+            if dist <= RELEVANCE_DISTANCE_THRESHOLD:
+                valid.append(r)
 
-        # Ignore if category is generic chat without actionable facts
-        cat = top.get("category", "")
-        if cat in ("user_prompt", "general") and dist > 1.15:
+        if not valid:
             return None
 
-        if dist <= RELEVANCE_DISTANCE_THRESHOLD:
-            content = top.get("content", "")
-            return (top.get("id", ""), content, dist)
+        # When multiple active memories match closely (within 0.15 distance of top),
+        # prioritize newer timestamp to ensure the latest preference is returned
+        valid.sort(key=lambda x: x.get("_distance", 2.0))
+        best_dist = valid[0].get("_distance", 2.0)
+        close_competitors = [r for r in valid if r.get("_distance", 2.0) <= best_dist + 0.15]
+        close_competitors.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        top = close_competitors[0]
+
+        content = top.get("content", "")
+        return (top.get("id", ""), content, top.get("_distance", 2.0))
 
     except Exception:
         pass
 
     return None
+
+
+class CompactionCarryover:
+    """
+    ThinkRail-inspired Context Compaction Defense for Cephalo.
+    Re-anchors essential user identity, verified hardware specifications,
+    critical ground-truth invariants, and active project specialties
+    when an agent session undergoes context window compaction.
+    """
+
+    def __init__(self, profile_file: Path = PROFILE_FILE, root_dir: Path = ROOT_DIR):
+        self.profile_file = profile_file
+        self.root_dir = root_dir
+        self.specialties_dir = root_dir / "specialties"
+
+    def is_compacted_session(self, transcript_path: Path) -> bool:
+        """Sniffs transcript for context compaction boundaries or truncation indicators."""
+        if not transcript_path.exists():
+            return False
+        try:
+            with open(transcript_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if '"truncated_fields"' in line or '"compactionSummary"' in line or '"firstKeptEntryId"' in line:
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def build_carryover_payload(self, active_specialty: Optional[str] = None) -> str:
+        """
+        Builds a compact, high-density memory carryover anchor block.
+        """
+        lines = [
+            "🧠 [Cephalo Ground-Truth Memory Carryover | Active Post-Compaction]",
+            "<!-- Context compaction detected. Active constraints and core invariants re-anchored below. Follow strictly. -->",
+            "- Core Invariant: ALWAYS validate ground truth before recommending. Never extrapolate vendor shipping, pricing, or compatibility without verified facts.",
+            "- Privacy Invariant: Zero-leak privacy; all secrets scrubbed before LanceDB storage.",
+        ]
+
+        if self.profile_file.exists():
+            try:
+                prof_content = self.profile_file.read_text(encoding="utf-8")
+                hw_display = None
+                cinema_aesthetic = None
+                for line in prof_content.splitlines():
+                    l_lower = line.lower()
+                    if line.startswith("- ") and ("tv" in l_lower or "display" in l_lower) and any(d in l_lower for d in ["tcl", "oled", "qled", "lg", "sony"]):
+                        hw_display = line.strip().lstrip("- ").strip()
+                    elif line.startswith("- ") and "visual aesthetic" in l_lower:
+                        cinema_aesthetic = line.strip().lstrip("- ").strip()
+
+                if hw_display:
+                    lines.append(f"- Verified Hardware / Display: {hw_display}")
+                else:
+                    lines.append("- Verified Hardware / Display: TCL 65T8B (65\" 4K QLED Google TV).")
+
+                if cinema_aesthetic:
+                    lines.append(f"- Cinema Aesthetics: {cinema_aesthetic}")
+                else:
+                    lines.append("- Cinema Aesthetics: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn.")
+
+                for line in prof_content.splitlines():
+                    if line.startswith("- ") and any(k in line.lower() for k in ["hungarian", "direct", "pragmatic", "no fluff"]):
+                        lines.append(line)
+            except Exception:
+                lines.append("- Verified Hardware / Display: TCL 65T8B (65\" 4K QLED Google TV).")
+                lines.append("- Cinema Aesthetics: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn.")
+        else:
+            lines.append("- Verified Hardware / Display: TCL 65T8B (65\" 4K QLED Google TV).")
+            lines.append("- Cinema Aesthetics: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn.")
+
+        if active_specialty and self.specialties_dir.exists():
+            spec_file = self.specialties_dir / f"{active_specialty}.md"
+            if spec_file.exists():
+                try:
+                    spec_content = spec_file.read_text(encoding="utf-8")
+                    lines.append(f"\n[Active Project Specialty: {active_specialty}]\n" + spec_content[:800])
+                except Exception:
+                    pass
+
+        return "\n".join(lines)
 
 
 def handle_session_start(input_data: Dict[str, Any]) -> None:
@@ -311,6 +408,24 @@ def handle_pre_invocation(input_data: Dict[str, Any]) -> None:
                 latest_user_text = new_msgs[-1]["content"]
 
     inject_steps = []
+    if transcript_path_str:
+        tpath = Path(transcript_path_str)
+        if tpath.exists():
+            carryover_engine = CompactionCarryover(PROFILE_FILE, ROOT_DIR)
+            if carryover_engine.is_compacted_session(tpath):
+                state = load_state()
+                conv_state = state.get("processed_conversations", {}).get(conv_id, {})
+                last_carry_step = conv_state.get("last_carryover_step", -1)
+                curr_step = conv_state.get("last_step", 0)
+                if curr_step - last_carry_step > 15 or last_carry_step == -1:
+                    inject_steps.append({
+                        "ephemeralMessage": carryover_engine.build_carryover_payload()
+                    })
+                    conv_state["last_carryover_step"] = curr_step
+                    if "processed_conversations" not in state:
+                        state["processed_conversations"] = {}
+                    state["processed_conversations"][conv_id] = conv_state
+                    save_state(state)
     if latest_user_text:
         # Ground-truth validation enforcement on recommendation / sourcing queries
         if re.search(r"\b(recommend|where (to|can I) (buy|order|get)|cheapest (way|option)|which (part|vendor|shop|tool|library))\b", latest_user_text, re.IGNORECASE):
@@ -415,7 +530,14 @@ def main():
     parser.add_argument("--stop-hook", action="store_true", help="Run in Stop hook mode")
     parser.add_argument("--scan", action="store_true", help="Scan and audit all past transcripts")
     parser.add_argument("--transcript", type=str, help="Specific transcript file to scan")
+    parser.add_argument("--carryover", action="store_true", help="Print compaction memory carryover block")
+    parser.add_argument("--specialty", type=str, help="Specialty to attach to carryover")
     args = parser.parse_args()
+
+    if args.carryover:
+        cc = CompactionCarryover()
+        print(cc.build_carryover_payload(args.specialty))
+        return
 
     # Read stdin if in a hook mode
     if args.hook or args.session_start or args.pre_invocation or args.stop_hook or (not sys.stdin.isatty() and not args.scan and not args.transcript):

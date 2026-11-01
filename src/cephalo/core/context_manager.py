@@ -48,19 +48,57 @@ class ContextManager:
                         "- **The Rule of Three:** Concrete code first; abstract only when 3 distinct call sites share identical invariants.\n"
                         "- **Pre-Recommendation Invariant:** Validate ground truth before recommending. Zero theoretical extrapolation.")
 
-        # 2. Hardware Profiles if requested
+        # 2. Hardware Profiles if requested (Dynamically extracted from profile)
         if include_hardware:
-            sections.append("## Verified Hardware Profile\n"
-                            "- **Living Room Display:** TCL 65T8B (65\" 4K QLED Google TV).\n"
-                            "- **Workstation:** Windows 10 IoT Enterprise LTSC, 16 GB RAM, NVIDIA GeForce GTX 1050 Ti (4GB VRAM).\n"
-                            "- **Silent Execution Invariant:** All Windows subprocesses and background tasks must enforce CREATE_NO_WINDOW (0x08000000).")
+            hw_lines = []
+            if self.profile_path and self.profile_path.exists():
+                try:
+                    prof_text = self.profile_path.read_text(encoding="utf-8")
+                    in_hw = False
+                    for line in prof_text.splitlines():
+                        if line.startswith("## ") and any(k in line.lower() for k in ["hardware", "identity"]):
+                            in_hw = True
+                            continue
+                        elif line.startswith("## ") and in_hw:
+                            break
+                        if in_hw and (line.startswith("- ") or line.startswith("  - ")):
+                            hw_lines.append(line.strip())
+                except Exception:
+                    pass
 
-        # 3. Cinema & Aesthetic preferences if requested
+            if hw_lines:
+                sections.append("## Verified Hardware Profile\n" + "\n".join(hw_lines))
+            else:
+                sections.append("## Verified Hardware Profile\n"
+                                "- **Living Room Display:** TCL 65T8B (65\" 4K QLED Google TV).\n"
+                                "- **Workstation:** Windows 10 IoT Enterprise LTSC, 16 GB RAM, NVIDIA GeForce GTX 1050 Ti (4GB VRAM).\n"
+                                "- **Silent Execution Invariant:** All Windows subprocesses and background tasks must enforce CREATE_NO_WINDOW (0x08000000).")
+
+        # 3. Cinema & Aesthetic preferences if requested (Dynamically extracted from profile)
         if include_cinema:
-            sections.append("## Cinema & Visual Aesthetic\n"
-                            "- **Display Target:** TCL 65T8B 4K QLED Google TV.\n"
-                            "- **Aesthetic:** Eye-popping, vibrant, high-saturation color grading (neon nightscapes, turquoise Mediterranean sun, high contrast 4K). Anti-grey / anti-drab.\n"
-                            "- **Pacing:** Instant narrative velocity from minute 1 (cold-open action, rapid tempo). Anti-slowburn.")
+            cinema_lines = []
+            if self.profile_path and self.profile_path.exists():
+                try:
+                    prof_text = self.profile_path.read_text(encoding="utf-8")
+                    in_cinema = False
+                    for line in prof_text.splitlines():
+                        if line.startswith("## ") and any(k in line.lower() for k in ["entertainment", "cinema"]):
+                            in_cinema = True
+                            continue
+                        elif line.startswith("## ") and in_cinema:
+                            break
+                        if in_cinema and (line.startswith("- ") or line.startswith("  - ")):
+                            cinema_lines.append(line.strip())
+                except Exception:
+                    pass
+
+            if cinema_lines:
+                sections.append("## Cinema & Visual Aesthetic\n" + "\n".join(cinema_lines))
+            else:
+                sections.append("## Cinema & Visual Aesthetic\n"
+                                "- **Display Target:** TCL 65T8B 4K QLED Google TV.\n"
+                                "- **Aesthetic:** Eye-popping, vibrant, high-saturation color grading (neon nightscapes, turquoise Mediterranean sun, high contrast 4K). Anti-grey / anti-drab.\n"
+                                "- **Pacing:** Instant narrative velocity from minute 1 (cold-open action, rapid tempo). Anti-slowburn.")
 
         # 4. Domain Specialty if requested
         if specialty:

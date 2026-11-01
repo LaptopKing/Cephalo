@@ -536,6 +536,7 @@ class LanceDBStore:
             pa.field("sanitized", pa.bool_()),
             pa.field("tags", pa.list_(pa.string())),
             pa.field("supersedes", pa.string()),
+            pa.field("superseded_by", pa.string()),
             pa.field("relates_to", pa.list_(pa.string())),
             pa.field("is_deprecated", pa.bool_()),
         ])
@@ -548,6 +549,8 @@ class LanceDBStore:
             fields_to_add.append(pa.field("tags", pa.list_(pa.string())))
         if "supersedes" not in existing_fields:
             fields_to_add.append(pa.field("supersedes", pa.string()))
+        if "superseded_by" not in existing_fields:
+            fields_to_add.append(pa.field("superseded_by", pa.string()))
         if "relates_to" not in existing_fields:
             fields_to_add.append(pa.field("relates_to", pa.list_(pa.string())))
         if "is_deprecated" not in existing_fields:
@@ -583,14 +586,26 @@ class LanceDBStore:
 
         return self.db.create_table(self.table_name, schema=self._get_schema())
 
-    def deprecate_record(self, record_id: str, superseded_by: str = "") -> bool:
+    def deprecate_record(self, record_id: str, superseded_by: str = "", sync_to_jsonl: bool = True) -> bool:
         """Marks a record as deprecated when superseded by a newer memory."""
         if self.table.count_rows() == 0:
             return False
         try:
             clean_id = record_id.replace("'", "''")
-            self.table.update(where=f"id = '{clean_id}'", values={"is_deprecated": True})
+            clean_sub = (superseded_by or "").replace("'", "''")
+            update_values = {"is_deprecated": True}
+            if "superseded_by" in self.table.schema.names:
+                update_values["superseded_by"] = clean_sub
+            self.table.update(where=f"id = '{clean_id}'", values=update_values)
             logger.info(f"Deprecated memory record '{record_id}' (superseded by '{superseded_by}')")
+
+            if sync_to_jsonl:
+                try:
+                    from cephalo.core.preference_reconciler import PreferenceReconciler
+                    PreferenceReconciler.sync_deprecation_to_jsonl(record_id, superseded_by=superseded_by)
+                except Exception as sync_err:
+                    logger.debug(f"Could not sync deprecation to jsonl: {sync_err}")
+
             return True
         except Exception as e:
             logger.warning(f"Failed to deprecate record '{record_id}': {e}")
@@ -626,6 +641,8 @@ class LanceDBStore:
                 rec["tags"] = []
             if "supersedes" not in rec or rec["supersedes"] is None:
                 rec["supersedes"] = ""
+            if "superseded_by" not in rec or rec["superseded_by"] is None:
+                rec["superseded_by"] = ""
             if "relates_to" not in rec or rec["relates_to"] is None:
                 rec["relates_to"] = []
             if "is_deprecated" not in rec or rec["is_deprecated"] is None:
@@ -748,8 +765,9 @@ class EmbeddingPipeline:
         supersedes: Optional[str] = None,
         relates_to: Optional[List[str]] = None,
         sync_to_jsonl: bool = True,
+        auto_reconcile: bool = True,
     ) -> Dict[str, Any]:
-        """Sanitizes, embeds, and stores a single prompt with tag extraction and supersession tracking."""
+        """Sanitizes, embeds, and stores a single prompt with tag extraction, contextual reconciliation, and supersession tracking."""
         clean_text = self.sanitizer.sanitize(raw_text.strip())
         traits = traits or []
 
@@ -762,9 +780,41 @@ class EmbeddingPipeline:
             count = self.store.count() + 1
             prompt_id = f"prompt-{count:03d}"
 
-        # If this prompt supersedes an existing memory, deprecate the older one
+        superseded_records: List[str] = []
+
+        # If this prompt explicitly supersedes an existing memory, deprecate the older one
         if supersedes:
-            self.store.deprecate_record(supersedes, superseded_by=prompt_id)
+            self.store.deprecate_record(supersedes, superseded_by=prompt_id, sync_to_jsonl=sync_to_jsonl)
+            superseded_records.append(supersedes)
+
+        # Autonomous Contextual Reconciliation for preferences and stateful rules
+        if auto_reconcile and self.store.count() > 0:
+            try:
+                from cephalo.core.preference_reconciler import PreferenceReconciler
+                reconciler = PreferenceReconciler()
+                if reconciler.is_stateful_candidate(category, clean_text):
+                    candidates = self.search(
+                        raw_query=clean_text,
+                        query_type="hybrid",
+                        limit=8,
+                        include_deprecated=False,
+                    )
+                    found_superseded = reconciler.find_superseded_records(
+                        new_text=clean_text,
+                        candidate_records=candidates,
+                        category=category,
+                        current_id=prompt_id,
+                    )
+                    for item in found_superseded:
+                        old_id = item["id"]
+                        if old_id and old_id not in superseded_records:
+                            self.store.deprecate_record(old_id, superseded_by=prompt_id, sync_to_jsonl=sync_to_jsonl)
+                            superseded_records.append(old_id)
+                            logger.info(f"[Reconciler] Auto-superseded memory '{old_id}': {item['reason']}")
+            except Exception as e:
+                logger.warning(f"Autonomous reconciliation check encountered error: {e}")
+
+        effective_supersedes = supersedes or (",".join(superseded_records) if superseded_records else "")
 
         timestamp = datetime.datetime.now().astimezone().isoformat()
         vector = self.embedder.embed_query(clean_text)
@@ -781,7 +831,8 @@ class EmbeddingPipeline:
             "extracted_intent": intent,
             "learned_traits": traits,
             "tags": merged_tags,
-            "supersedes": supersedes or "",
+            "supersedes": effective_supersedes,
+            "superseded_by": "",
             "relates_to": relates_to or [],
             "is_deprecated": False,
             "sanitized": True,
@@ -798,7 +849,8 @@ class EmbeddingPipeline:
                 "source": source,
                 "category": category,
                 "tags": merged_tags,
-                "supersedes": supersedes or "",
+                "supersedes": effective_supersedes,
+                "superseded_by": "",
                 "relates_to": relates_to or [],
                 "is_deprecated": False,
                 "content": clean_text,
@@ -808,7 +860,9 @@ class EmbeddingPipeline:
             with open(PROMPTS_FILE, "a", encoding="utf-8") as f:
                 f.write(json.dumps(jsonl_entry, ensure_ascii=False) + "\n")
 
-        return record
+        record_copy = dict(record)
+        record_copy["superseded_records"] = superseded_records
+        return record_copy
 
     def sync_from_jsonl(self, jsonl_path: Path = PROMPTS_FILE) -> Tuple[int, int]:
         """Ingests entries from prompts.jsonl into the LanceDB vector store."""
@@ -881,6 +935,7 @@ class EmbeddingPipeline:
                 "learned_traits": traits_list,
                 "tags": clean_tags,
                 "supersedes": str(item.get("supersedes", "")),
+                "superseded_by": str(item.get("superseded_by", "")),
                 "relates_to": list(item.get("relates_to", [])),
                 "is_deprecated": bool(item.get("is_deprecated", False)),
                 "sanitized": True,

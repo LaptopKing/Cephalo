@@ -116,6 +116,15 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                         "description": "Brief summary of user intent or context.",
                         "default": "",
                     },
+                    "supersedes": {
+                        "type": "string",
+                        "description": "Optional ID of a prior memory record this decision explicitly supersedes and deprecates.",
+                    },
+                    "auto_reconcile": {
+                        "type": "boolean",
+                        "description": "Whether to automatically detect and deprecate contextually conflicting older preferences (default: true).",
+                        "default": True,
+                    },
                 },
                 "required": ["text"],
             },
@@ -281,6 +290,114 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                 "required": ["url"],
             },
         },
+        {
+            "name": "cephalo_run_sandboxed",
+            "description": "Safely executes untrusted code or scripts in an isolated OpenSandbox container (or bounded local sandbox) with Landlock/seccomp protection, timeout gating, and SSRF intranet shielding.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "The Python, Bash, or JS code to execute.",
+                    },
+                    "language": {
+                        "type": "string",
+                        "enum": ["python", "bash", "javascript"],
+                        "default": "python",
+                        "description": "Execution language runtime.",
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "default": 30,
+                        "description": "Execution timeout limit.",
+                    },
+                    "allow_network": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Whether outbound network is permitted (default: False / deny-all).",
+                    },
+                },
+                "required": ["code"],
+            },
+        },
+        {
+            "name": "cephalo_task_checkpoint",
+            "description": "Checkpoints a subagent's execution state when pausing, completing steps, or hitting rate limits/token quotas. Enables seamless resumption without wasting tokens.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "Unique task identifier.",
+                    },
+                    "step_index": {
+                        "type": "integer",
+                        "description": "Current step index achieved.",
+                    },
+                    "checkpoint_state": {
+                        "type": "object",
+                        "description": "Dictionary of saved variables, partial outputs, and pending work.",
+                    },
+                    "pause_reason": {
+                        "type": "string",
+                        "description": "Optional reason (e.g. 'rate_limit_429', 'token_budget_pause', 'blocked_on_subagent').",
+                    },
+                    "reset_seconds": {
+                        "type": "integer",
+                        "description": "Seconds until rate limit or token budget resets.",
+                    },
+                    "assignee_agent": {
+                        "type": "string",
+                        "description": "Agent or subagent role name.",
+                    },
+                    "user_goal": {
+                        "type": "string",
+                        "description": "High-level goal of this task.",
+                    },
+                },
+                "required": ["task_id", "checkpoint_state"],
+            },
+        },
+        {
+            "name": "cephalo_task_resume",
+            "description": "Fetches saved checkpoint state for a paused or rate-limited subagent task, allowing it to continue where it left off.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "Task identifier to resume (omit to discover all resumable tasks).",
+                    },
+                    "assignee_agent": {
+                        "type": "string",
+                        "description": "Filter resumable tasks by agent role.",
+                    },
+                },
+            },
+        },
+        {
+            "name": "cephalo_task_list",
+            "description": "Lists subagent tasks, current step status, paused reasons, and token usage.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["running", "rate_limited_paused", "completed", "failed"],
+                        "description": "Filter by task status.",
+                    },
+                    "conversation_id": {
+                        "type": "string",
+                        "description": "Filter by conversation ID.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Max tasks to list.",
+                    },
+                },
+            },
+        },
     ]
 
 
@@ -318,16 +435,24 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             text = arguments.get("text", "")
             category = arguments.get("category", "general")
             intent = arguments.get("intent", "")
+            supersedes = arguments.get("supersedes")
+            auto_reconcile = arguments.get("auto_reconcile", True)
 
             rec = pipeline.ingest_prompt(
                 raw_text=text,
                 category=category,
                 source="mcp_agent",
                 intent=intent,
+                supersedes=supersedes,
                 sync_to_jsonl=True,
+                auto_reconcile=auto_reconcile,
             )
             clean_rec = {k: v for k, v in rec.items() if k != "vector"}
-            return {"status": "success", "recorded": clean_rec}
+            return {
+                "status": "success",
+                "recorded": clean_rec,
+                "superseded_records": rec.get("superseded_records", []),
+            }
 
         elif name == "cephalo_get_profile":
             if not PROFILE_FILE.exists():
@@ -434,6 +559,58 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
                 engine.render_serp_html(serp, output_path=out_path, standalone=True)
                 res["html_file"] = str(out_path)
             return res
+
+        elif name == "cephalo_run_sandboxed":
+            from cephalo.services.sandboxed_runner import SandboxedRunner
+            runner = SandboxedRunner()
+            return runner.run_code(
+                code=arguments.get("code", ""),
+                language=arguments.get("language", "python"),
+                allow_network=arguments.get("allow_network", False),
+                timeout_seconds=arguments.get("timeout_seconds", 30),
+            )
+
+        elif name == "cephalo_task_checkpoint":
+            from cephalo.core.task_ledger import TaskLedger
+            ledger = TaskLedger()
+            task_id = arguments.get("task_id", "")
+            if not ledger.get_task(task_id):
+                ledger.register_task(
+                    task_id=task_id,
+                    conversation_id=arguments.get("conversation_id", "default"),
+                    assignee_agent=arguments.get("assignee_agent", "subagent"),
+                    user_goal=arguments.get("user_goal", "Autonomous subtask"),
+                    total_steps=arguments.get("total_steps", 1),
+                )
+            return ledger.checkpoint(
+                task_id=task_id,
+                step_index=arguments.get("step_index", 0),
+                checkpoint_state=arguments.get("checkpoint_state", {}),
+                token_usage=arguments.get("token_usage"),
+                pause_reason=arguments.get("pause_reason"),
+                reset_seconds=arguments.get("reset_seconds"),
+            )
+
+        elif name == "cephalo_task_resume":
+            from cephalo.core.task_ledger import TaskLedger
+            ledger = TaskLedger()
+            task_id = arguments.get("task_id")
+            if task_id:
+                task = ledger.get_task(task_id)
+                return {"task": task}
+            else:
+                resumable = ledger.get_resumable_tasks(arguments.get("assignee_agent"))
+                return {"resumable_tasks": resumable}
+
+        elif name == "cephalo_task_list":
+            from cephalo.core.task_ledger import TaskLedger
+            ledger = TaskLedger()
+            tasks = ledger.list_tasks(
+                conversation_id=arguments.get("conversation_id"),
+                status=arguments.get("status"),
+                limit=arguments.get("limit", 20),
+            )
+            return {"tasks": tasks, "count": len(tasks)}
 
         elif name == "cephalo_web_fetch":
             from cephalo.research.web_search import WebSearchEngine

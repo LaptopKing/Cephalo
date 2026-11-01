@@ -150,13 +150,14 @@ def cmd_profile(args) -> None:
             action_desc = "replaced"
         else:
             addition = append_text.strip()
-            if not addition.startswith(("-", "*", "1.", "##", "#")):
-                addition = f"- {addition}"
-            content_clean = old_content.rstrip()
-            while content_clean.endswith("---"):
-                content_clean = content_clean[:-3].rstrip()
-            new_sec_text = f"{content_clean}\n{addition}"
-            action_desc = "appended"
+            from cephalo.core.preference_reconciler import PreferenceReconciler
+            new_sec_text, was_replaced, old_bullet = PreferenceReconciler.reconcile_markdown_section(
+                old_content, addition
+            )
+            if was_replaced:
+                action_desc = f"reconciled (replaced '{old_bullet}')"
+            else:
+                action_desc = "appended"
 
         sections[matched_idx]["content"] = new_sec_text
         sections[matched_idx]["tokens_est"] = round(len(new_sec_text) / 3.8)
@@ -358,6 +359,114 @@ def resolve_cli_input(
 
     return val
 
+
+
+
+def cmd_reconcile(args) -> None:
+    """Audits active LanceDB memories and automatically deprecates superseded or conflicting entries."""
+    pipeline = get_pipeline(table_name=args.table)
+    table = pipeline.store.table
+    if table.count_rows() == 0:
+        if args.json:
+            print(json.dumps({"status": "empty", "message": "Vector database is empty."}))
+        else:
+            print("Vector database is empty.")
+        return
+
+    arrow_tbl = table.to_arrow()
+    records = arrow_tbl.to_pylist()
+    # Exclude specialties and already deprecated records
+    active_records = [
+        r for r in records
+        if not r.get("is_deprecated") and not str(r.get("category", "")).startswith("specialty:")
+    ]
+
+    from cephalo.core.preference_reconciler import PreferenceReconciler
+    reconciler = PreferenceReconciler()
+
+    dry_run = getattr(args, "dry_run", False)
+    category_filter = getattr(args, "category", None)
+
+    active_records.sort(key=lambda x: x.get("timestamp", ""))
+
+    superseded_pairs = []
+    seen_older_ids = set()
+
+    for newer_rec in active_records:
+        n_cat = newer_rec.get("category", "")
+        if category_filter and n_cat != category_filter:
+            continue
+        n_text = newer_rec.get("content", "")
+        if not reconciler.is_stateful_candidate(n_cat, n_text):
+            continue
+
+        # Use stored vector directly to eliminate CPU embedding recomputation (sub-second execution)
+        vec = newer_rec.get("vector")
+        candidates = pipeline.store.search(
+            query_vector=vec,
+            query_text=n_text,
+            query_type="hybrid" if vec is not None else "fts",
+            limit=6,
+            include_deprecated=False,
+        )
+
+        for cand in candidates:
+            cand_id = cand.get("id")
+            if not cand_id or cand_id == newer_rec["id"] or cand_id in seen_older_ids:
+                continue
+
+            # Only older records can be superseded by a newer record
+            if cand.get("timestamp", "") >= newer_rec.get("timestamp", ""):
+                continue
+
+            cand_text = cand.get("content", "")
+            cand_cat = cand.get("category", "")
+            distance = cand.get("_distance")
+
+            is_sup, reason, conf = reconciler.detect_supersession(
+                new_text=n_text,
+                cand_text=cand_text,
+                category=n_cat,
+                cand_category=cand_cat,
+                distance=distance,
+            )
+            if is_sup and conf >= 0.75:
+                superseded_pairs.append({
+                    "older_id": cand_id,
+                    "older_content": cand_text[:90],
+                    "newer_id": newer_rec["id"],
+                    "newer_content": n_text[:90],
+                    "reason": reason,
+                    "confidence": conf,
+                })
+                seen_older_ids.add(cand_id)
+                if not dry_run:
+                    pipeline.store.deprecate_record(cand_id, superseded_by=newer_rec["id"], sync_to_jsonl=True)
+
+    if args.json:
+        print(json.dumps({
+            "dry_run": dry_run,
+            "total_active_scanned": len(active_records),
+            "superseded_count": len(superseded_pairs),
+            "reconciliations": superseded_pairs,
+        }, indent=2, ensure_ascii=False))
+        return
+
+    print(f"[*] Scanned {len(active_records)} active memories for contextual supersessions.")
+    if not superseded_pairs:
+        print("[+] All active preferences and memories are clean and non-conflicting.")
+        return
+
+    mode_str = "[DRY-RUN] Found" if dry_run else "[+] Successfully deprecated"
+    print(f"{mode_str} {len(superseded_pairs)} superseded memories:")
+    for item in superseded_pairs:
+        print(f"  - [{item['older_id']}] superseded by [{item['newer_id']}] (Confidence: {item['confidence']:.0%})")
+        print(f"    Reason: {item['reason']}")
+        print(f"    Old: {item['older_content']}...")
+        print(f"    New: {item['newer_content']}...\n")
+
+    if dry_run:
+        print("Tip: Run `cephalo reconcile` without --dry-run to commit deprecations to LanceDB and prompts.jsonl.")
 
 def cmd_search(args) -> None:
     """Performs hybrid, vector, or keyword search across LanceDB."""
@@ -567,6 +676,8 @@ def cmd_record(args) -> None:
         print(f"    Tags:       {' '.join(['#' + t for t in record['tags']])}")
     if record.get("supersedes"):
         print(f"    Supersedes: {record['supersedes']}")
+    if record.get("superseded_records"):
+        print(f"    Auto-Superseded: {', '.join(record['superseded_records'])}")
     if record.get("relates_to"):
         print(f"    Relates To: {', '.join(record['relates_to'])}")
     print(f"    Sanitized:  {record['content']}")
@@ -1604,6 +1715,99 @@ def cmd_digest(args) -> None:
         print(gen.render_markdown(digest_data))
 
 
+
+
+def cmd_carryover(args):
+    """Generates high-density compaction carryover memory anchor."""
+    from cephalo.learning.auto_harvest import CompactionCarryover
+    cc = CompactionCarryover()
+    payload = cc.build_carryover_payload(active_specialty=getattr(args, "specialty", None))
+    if getattr(args, "json", False):
+        print(json.dumps({"carryover": payload}, ensure_ascii=False))
+    else:
+        print(payload)
+
+
+def cmd_task(args):
+    """Manages multi-agent coordination and rate-limit recovery ledger."""
+    from cephalo.core.task_ledger import TaskLedger
+    ledger = TaskLedger()
+    action = getattr(args, "task_action", "list") or "list"
+
+    if action == "list":
+        tasks = ledger.list_tasks(limit=30)
+        if getattr(args, "json", False):
+            print(json.dumps({"tasks": tasks, "count": len(tasks)}, indent=2, ensure_ascii=False))
+        else:
+            if not tasks:
+                print("No tasks recorded in multi-agent ledger.")
+                return
+            print(f"📋 Multi-Agent Task Ledger ({len(tasks)} tasks):")
+            print("-" * 75)
+            for t in tasks:
+                reset_info = f" [Resets: {t['rate_limit_reset_at'][:19]}]" if t.get("rate_limit_reset_at") else ""
+                print(f"[{t['status'].upper():20}] {t['task_id']} | Step {t['step_index']}/{t['total_steps']} | {t['assignee_agent']}: {t['user_goal'][:40]}{reset_info}")
+            print("-" * 75)
+
+    elif action == "resume":
+        task_id = args.task_id
+        task = ledger.get_task(task_id)
+        if not task:
+            print(f"Task '{task_id}' not found.")
+            return
+        if getattr(args, "json", False):
+            print(json.dumps({"task": task}, indent=2, ensure_ascii=False))
+        else:
+            print(f"🔄 Resuming Task: {task_id}")
+            print(f"   Goal: {task['user_goal']}")
+            print(f"   Step: {task['step_index']} of {task['total_steps']}")
+            print(f"   Assignee: {task['assignee_agent']}")
+            print("   Saved Checkpoint State:")
+            print(json.dumps(task.get("checkpoint_state", {}), indent=4))
+
+
+def cmd_ocr(args):
+    """Runs ultra-fast pure-CPU Indra OCR on image or document."""
+    file_path = Path(args.file_path)
+    if not file_path.exists():
+        print(f"File not found: {file_path}")
+        return
+
+    import indra_ocr
+    conv = indra_ocr.load(threads=4, mode="auto")
+    text_parts = []
+
+    if file_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+        from PIL import Image
+        import cv2
+        import numpy as np
+        img = Image.open(file_path).convert("RGB")
+        gray = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
+        page = conv.ocr(gray)
+        text = (getattr(page, "markdown", None) or getattr(page, "text", "") or "").strip()
+        text_parts.append(text)
+    else:
+        for page_idx, page in conv.convert(str(file_path)):
+            if page.markdown:
+                text_parts.append(page.markdown)
+
+    combined = "\n\n".join(text_parts)
+    if getattr(args, "json", False):
+        print(json.dumps({"file": str(file_path), "text": combined}, ensure_ascii=False))
+    else:
+        print(combined)
+
+    if getattr(args, "record", False):
+        from brain import get_pipeline
+        pipeline = get_pipeline()
+        pipeline.record(
+            text=combined,
+            category=args.category,
+            source=f"ocr:{file_path.name}",
+            tags=["ocr", file_path.suffix.lstrip(".")]
+        )
+        print(f"Recorded OCR content into LanceDB under category '{args.category}'.")
+
 def main():
     maybe_auto_learn()
 
@@ -1623,6 +1827,11 @@ def main():
 
     # Status
     subparsers.add_parser("status", parents=[shared_parser], help="Display memory status, counts, and health.")
+
+    # Reconcile (Autonomous Contextual Preference Reconciler)
+    reconcile_p = subparsers.add_parser("reconcile", parents=[shared_parser], help="Audit active memories and automatically deprecate superseded/conflicting preferences.")
+    reconcile_p.add_argument("--dry-run", action="store_true", help="Inspect superseded memories without writing deprecations to disk.")
+    reconcile_p.add_argument("--category", type=str, default=None, help="Filter reconciliation to specific category.")
 
     # Profile
     profile_p = subparsers.add_parser("profile", parents=[shared_parser], help="Display, extract, or update USER_PROFILE.md.")
@@ -1898,10 +2107,29 @@ def main():
     digest_p.add_argument("--date", type=str, default=None, help="Target date in YYYY-MM-DD format.")
     digest_p.add_argument("--check-offer", action="store_true", help="Check if daily digest is available and should be offered.")
 
+    
+    # Carryover (Context Compaction Defense)
+    carry_p = subparsers.add_parser("carryover", parents=[shared_parser], help="Output high-density compaction carryover memory anchor.")
+    carry_p.add_argument("--specialty", type=str, default=None, help="Active project specialty to include.")
+
+    # Task (Multi-Agent Coordination & Checkpoint Ledger)
+    task_p = subparsers.add_parser("task", parents=[shared_parser], help="Manage multi-agent task coordination and rate-limit recovery ledger.")
+    task_sub = task_p.add_subparsers(dest="task_action", help="Task action")
+    task_sub.add_parser("list", parents=[shared_parser], help="List active and paused tasks.")
+    task_res_p = task_sub.add_parser("resume", parents=[shared_parser], help="Resume a paused subagent task.")
+    task_res_p.add_argument("task_id", type=str, help="Task ID to resume.")
+
+    # OCR (Indra OCR Document & Image Parser)
+    ocr_p = subparsers.add_parser("ocr", parents=[shared_parser], help="Ultra-fast pure-CPU OCR using Indra (45+ pages/sec).")
+    ocr_p.add_argument("file_path", type=str, help="Image or PDF file path to extract text from.")
+    ocr_p.add_argument("--record", action="store_true", help="Automatically record and index in LanceDB.")
+    ocr_p.add_argument("--category", type=str, default="ocr_document", help="Category for recorded memory.")
+
     args = parser.parse_args()
 
     COMMAND_HANDLERS = {
         "status": cmd_status,
+        "reconcile": cmd_reconcile,
         "profile": cmd_profile,
         "search": cmd_search,
         "def": cmd_def,
@@ -1924,6 +2152,9 @@ def main():
         "safeguard": cmd_safeguard,
         "screen": cmd_screen,
         "digest": cmd_digest,
+        "carryover": cmd_carryover,
+        "task": cmd_task,
+        "ocr": cmd_ocr,
     }
 
     if not args.command:

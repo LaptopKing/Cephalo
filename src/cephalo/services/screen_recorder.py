@@ -171,13 +171,40 @@ class ScreenMemoryEngine:
         self,
         base_dir: Optional[Path] = None,
         min_delta_threshold: float = 0.05,
+        enable_ocr: bool = True,
     ):
         self.base_dir = base_dir or FRAMES_DIR
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.index_file = self.base_dir / "frame_index.jsonl"
         self.min_delta_threshold = min_delta_threshold
+        self.enable_ocr = enable_ocr
+        self._ocr_conv: Optional[Any] = None
         self.last_frame: Optional[Any] = None
         self.last_frame_time: Optional[datetime.datetime] = None
+
+    def _extract_ocr(self, img: Any) -> str:
+        """
+        Extracts structured text from screen image using pure-CPU Indra OCR (ONNX Runtime).
+        Runs in ~50-200ms without GPU or PyTorch overhead.
+        """
+        if not self.enable_ocr or img is None:
+            return ""
+        try:
+            if self._ocr_conv is None:
+                import indra_ocr
+                # Load with 2 worker threads for lightweight desktop background operation
+                self._ocr_conv = indra_ocr.load(threads=2, mode="auto")
+
+            import cv2
+            import numpy as np
+
+            # Convert PIL image to grayscale uint8 numpy array
+            gray = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
+            page = self._ocr_conv.ocr(gray)
+            return (getattr(page, "markdown", None) or getattr(page, "text", "") or "").strip()
+        except Exception as e:
+            logger.debug("Indra OCR execution bypassed: %s", e)
+            return ""
 
     def capture_step(
         self,
@@ -248,8 +275,12 @@ class ScreenMemoryEngine:
             img.save(frame_path, "PNG", optimize=True)
             file_size_kb = round(frame_path.stat().st_size / 1024.0, 1)
 
-        # 5. Extract OCR / Text (Mock or in-process)
-        ocr_text = mock_ocr_text or ""
+        # 5. Extract OCR / Text (Indra OCR pure-CPU or mock fallback)
+        ocr_text = mock_ocr_text
+        if ocr_text is None and self.enable_ocr and img is not None:
+            ocr_text = self._extract_ocr(img)
+
+        ocr_text = ocr_text or ""
         sanitized_text = ""
         if ocr_text:
             # Sanitize via Tier 1 regex shield
