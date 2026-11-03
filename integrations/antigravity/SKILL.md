@@ -79,10 +79,43 @@ Command                       | Description
 `cephalo specialty list`      | View all domain specialties across projects
 `cephalo specialty create`    | Register domain knowledge module
 `cephalo harvest`             | Audit past transcripts across workspaces
+`cephalo migrate`             | Lossless compressed migration export of all settings across harnesses
+`cephalo migrate --all`       | Full migration: Cephalo vector data + prompt logs + SQLite DBs + all projects
+`cephalo migrate restore <archive>` | Single-command restoration & setup with SHA-256 lossless verification
+`cephalo migrate inspect <archive>` | Inspect archive manifest, compression ratio, harnesses, and projects
+`cephalo migrate list`        | Enumerate available migration archives in data/migrations/
 
 ---
 
-## 5. Google-Style Web Search & Generative UI UX
+## 5. Universal Multi-Harness Migration Engine
+
+Cephalo provides a sovereign, lossless migration system across all agent harnesses (Antigravity, Claude Code, Cursor, Windsurf, Aider, Copilot).
+
+### Migration Scopes
+- **Settings Migration (Default):**
+  Packs all Cephalo configs, user profile, safeguards, specialties, patterns, and multi-harness settings (`hooks.json`, `mcp_config.json`, rules, skills, plugins, `.cursorrules`, `.windsurfrules`, `CLAUDE.md`, etc.).
+  ```bash
+  cephalo migrate
+  ```
+- **Full Migration (`--all`):**
+  Migrates everything in Settings + Cephalo LanceDB vector store, prompt memory log, SQLite databases (clean atomic snapshots via SQLite backup API), all scratch workspace projects, and AI agent harness brain transcripts.
+  ```bash
+  cephalo migrate --all
+  ```
+
+### Single-Command Setup & Restoration
+To restore on any target machine, run a single command:
+```bash
+cephalo migrate restore "<archive_path>"
+```
+- Performs bit-for-bit SHA-256 lossless verification.
+- Creates automatic safety backups (`.bak.<timestamp>`) of modified files.
+- Adaptively merges hooks into `hooks.json` and MCP servers into `mcp_config.json` without destroying existing configurations.
+- Verifies LanceDB tables and reports health status.
+
+---
+
+## 6. Google-Style Web Search & Generative UI UX
 
 When the user requests web searches or current information:
 - Execute `cephalo web "<query>"` or call MCP tool `cephalo_web_search`.

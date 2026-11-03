@@ -20,8 +20,10 @@ PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 SPECIALTIES_DIR = ROOT_DIR / "specialties"
 DOCS_DIR = ROOT_DIR / "docs"
 PATTERNS_DIR = ROOT_DIR / "patterns"
+MIGRATIONS_DIR = DATA_DIR / "migrations"
 
 # Ensure essential directories exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_LANCEDB_DIR.mkdir(parents=True, exist_ok=True)
 SPECIALTIES_DIR.mkdir(parents=True, exist_ok=True)
+MIGRATIONS_DIR.mkdir(parents=True, exist_ok=True)

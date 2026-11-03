@@ -398,6 +398,40 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                 },
             },
         },
+        {
+            "name": "cephalo_migrate",
+            "description": "Universal migration engine for Cephalo and all AI agent harnesses (Antigravity, Claude Code, Cursor, Windsurf, Aider, Copilot). Exports or restores lossless compressed migration bundles (.cephalo.tar.xz). By default migrates all settings, rules, hooks, and MCP configs; optionally with scope='all' migrates all vector memory, prompt logs, SQLite databases, and workspace projects. Restores everything with a single action.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["export", "restore", "inspect", "list"],
+                        "description": "Migration action to execute (default: 'export').",
+                        "default": "export",
+                    },
+                    "scope": {
+                        "type": "string",
+                        "enum": ["settings", "all"],
+                        "description": "Migration scope: 'settings' (all harness and Cephalo settings) or 'all' (settings + vector data + projects).",
+                        "default": "settings",
+                    },
+                    "archive_path": {
+                        "type": "string",
+                        "description": "Path to migration archive file (required for 'restore' and 'inspect').",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Preview restore operations without modifying files (default: false).",
+                        "default": False,
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": "Optional custom output path for created migration archive.",
+                    },
+                },
+            },
+        },
     ]
 
 
@@ -620,6 +654,37 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             max_chars = arguments.get("max_chars", 15000)
             text = engine.fetch_url(url, max_chars=max_chars, dynamic=dynamic)
             return {"url": url, "content": text}
+
+        elif name == "cephalo_migrate":
+            from cephalo.core.migration import MigrationManager, MigrationScope
+            manager = MigrationManager()
+            action = arguments.get("action", "export")
+
+            if action == "export":
+                scope_str = arguments.get("scope", "settings")
+                scope = MigrationScope.ALL if scope_str == "all" else MigrationScope.SETTINGS
+                out_p = Path(arguments["output_path"]) if arguments.get("output_path") else None
+                return manager.create_migration(scope=scope, output_path=out_p)
+
+            elif action == "restore":
+                arch_str = arguments.get("archive_path")
+                if not arch_str:
+                    return {"error": "'archive_path' is required for restore action."}
+                dry_run = arguments.get("dry_run", False)
+                return manager.restore_migration(Path(arch_str), dry_run=dry_run)
+
+            elif action == "inspect":
+                arch_str = arguments.get("archive_path")
+                if not arch_str:
+                    return {"error": "'archive_path' is required for inspect action."}
+                return manager.inspect_migration(Path(arch_str))
+
+            elif action == "list":
+                archives = manager.list_migrations()
+                return {"count": len(archives), "archives": archives}
+
+            else:
+                return {"error": f"Invalid migration action '{action}'. Choose from export, restore, inspect, list."}
 
         else:
             return {"error": f"Unknown tool: '{name}'"}

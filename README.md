@@ -284,6 +284,25 @@ When synthesizing domain specialties or researching technologies, Cephalo's `res
 cephalo research "BullMQ Redis Job Queue" --project "backend" --create
 ```
 
+### Universal Multi-Harness Lossless Migration Engine
+Migrate all settings or complete datasets and projects across AI agent harnesses (Antigravity, Claude Code, Cursor, Windsurf, Aider, Copilot) with maximum lossless compression (`.cephalo.tar.xz` via LZMA2 extreme) and 1-command setup:
+```bash
+# 1. Export all settings across Cephalo and all agent harnesses (ultra-compact, lossless)
+cephalo migrate
+
+# 2. Export full backup: settings + LanceDB vector store + prompt log + SQLite DBs + workspace projects
+cephalo migrate --all
+
+# 3. Inspect migration archive manifest, compression ratio, harnesses, and file count without extracting
+cephalo migrate inspect "data/migrations/cephalo-migration-20261103-settings.cephalo.tar.xz"
+
+# 4. Single-command restoration and setup on any machine (bit-for-bit SHA-256 verification + non-destructive merge)
+cephalo migrate restore "data/migrations/cephalo-migration-20261103-settings.cephalo.tar.xz"
+
+# 5. List available migration archives
+cephalo migrate list
+```
+
 ---
 
 ## 5. Zero-Leak Privacy Shield
