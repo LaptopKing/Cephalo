@@ -29,10 +29,12 @@ Features:
 
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import datetime
 import enum
 import hashlib
+import io
 import json
 import logging
 import lzma
@@ -180,6 +182,8 @@ def should_exclude(rel_path: str, include_build_artifacts: bool = False) -> bool
             return True
         if not include_build_artifacts and p in BUILD_CACHE_DIRECTORIES:
             return True
+    if "skills" in parts and ".git" in parts:
+        return True
     if ".system_generated" in parts and "tasks" in parts:
         return True
     return False
@@ -358,22 +362,29 @@ class MigrationManager:
         output_path: Optional[Path] = None,
         compression_format: CompressionFormat = CompressionFormat.XZ,
         include_build_artifacts: bool = False,
+        preset: int = 6,
+        fast: bool = False,
         comment: str = "",
     ) -> Dict[str, Any]:
         """
-        Creates a complete, lossless, compressed migration archive.
+        Creates a complete, lossless, compressed migration archive via direct streaming.
 
         Args:
             scope: MigrationScope.SETTINGS (settings only) or MigrationScope.ALL (everything)
             output_path: Destination path for the archive file (optional)
             compression_format: XZ (default, highest ratio), GZ, or ZIP
             include_build_artifacts: Whether to include build dirs like target/ or .venv
+            preset: LZMA compression preset (0-9, default: 6 for balanced maximum throughput)
+            fast: If True, uses preset 3 for ultra-fast exports
             comment: Optional comment or description embedded in manifest
         """
         start_time = time.time()
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         scope_str = scope.value if isinstance(scope, MigrationScope) else str(scope)
         fmt_str = compression_format.value if isinstance(compression_format, CompressionFormat) else str(compression_format)
+
+        if fast:
+            preset = 3
 
         if not output_path:
             ext = f".cephalo.tar.{fmt_str}" if fmt_str in ("xz", "gz") else f".cephalo.{fmt_str}"
@@ -383,13 +394,38 @@ class MigrationManager:
             output_path = Path(output_path).resolve()
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Initiating Cephalo migration export: scope={scope_str}, format={fmt_str}, target={output_path}")
+        logger.info(f"Initiating Cephalo migration export: scope={scope_str}, format={fmt_str}, preset={preset}, target={output_path}")
 
-        # Temporary staging directory for clean packing and atomic SQLite snapshots
-        with tempfile.TemporaryDirectory(prefix="cephalo_migrate_") as temp_dir_str:
-            temp_dir = Path(temp_dir_str)
-            staging_root = temp_dir / "bundle"
-            staging_root.mkdir(parents=True, exist_ok=True)
+        # Lightweight temporary directory only for clean atomic SQLite snapshots
+        with tempfile.TemporaryDirectory(prefix="cephalo_mig_sqlite_") as temp_db_str:
+            temp_db_dir = Path(temp_db_str)
+            planned_items: List[Tuple[Path, str, str]] = []
+
+            # 1. Plan Cephalo Core
+            self._plan_cephalo_core(
+                planned_items=planned_items,
+                scope=scope,
+                include_build_artifacts=include_build_artifacts,
+                temp_dir=temp_db_dir,
+            )
+
+            # 2. Plan Multi-Harness
+            harnesses = self._plan_harnesses(
+                planned_items=planned_items,
+                scope=scope,
+                include_build_artifacts=include_build_artifacts,
+            )
+
+            # 3. Plan Projects (if ALL)
+            projects: List[str] = []
+            if scope == MigrationScope.ALL:
+                projects = self._plan_projects(
+                    planned_items=planned_items,
+                    include_build_artifacts=include_build_artifacts,
+                )
+
+            # 4. Multi-threaded Parallel Hashing
+            file_entries, valid_items = self._hash_planned_items(planned_items)
 
             manifest = MigrationManifest(
                 version="1.0.0",
@@ -401,50 +437,22 @@ class MigrationManager:
                 source_os=f"{sys.platform} ({platform.platform()})",
                 source_python=sys.version.split()[0],
                 source_cephalo_dir=str(self.base_dir),
+                total_files=len(file_entries),
+                total_uncompressed_bytes=sum(f.size for f in file_entries),
+                harnesses_detected=list(harnesses.keys()),
+                projects_detected=projects,
+                files=[f.to_dict() for f in file_entries],
             )
 
-            file_entries: List[FileEntry] = []
+            manifest_bytes = json.dumps(manifest.to_dict(), indent=2, ensure_ascii=False).encode("utf-8")
 
-            # 1. Collect Cephalo Core
-            self._collect_cephalo_core(
-                staging_root=staging_root,
-                file_entries=file_entries,
-                scope=scope,
-                include_build_artifacts=include_build_artifacts,
-            )
-
-            # 2. Collect Multi-Harness Settings & Data
-            harnesses = self._collect_harnesses(
-                staging_root=staging_root,
-                file_entries=file_entries,
-                scope=scope,
-                include_build_artifacts=include_build_artifacts,
-            )
-            manifest.harnesses_detected = list(harnesses.keys())
-
-            # 3. Collect Projects (if scope == ALL)
-            if scope == MigrationScope.ALL:
-                projects = self._collect_projects(
-                    staging_root=staging_root,
-                    file_entries=file_entries,
-                    include_build_artifacts=include_build_artifacts,
-                )
-                manifest.projects_detected = projects
-
-            # Populate manifest statistics
-            manifest.total_files = len(file_entries)
-            manifest.total_uncompressed_bytes = sum(f.size for f in file_entries)
-            manifest.files = [f.to_dict() for f in file_entries]
-
-            # Write manifest.json to staging root
-            manifest_file = staging_root / "manifest.json"
-            manifest_file.write_text(json.dumps(manifest.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
-
-            # 4. Create Compressed Archive
-            self._compress_staging(
-                staging_root=staging_root,
+            # 5. Direct Streaming to Compressed Archive (Manifest First!)
+            self._stream_to_archive(
                 output_path=output_path,
+                manifest_bytes=manifest_bytes,
+                valid_items=valid_items,
                 compression_format=compression_format,
+                preset=preset,
             )
 
         duration = time.time() - start_time
@@ -472,297 +480,67 @@ class MigrationManager:
             "created_at": manifest.created_at,
         }
 
-    def _collect_cephalo_core(
+    def _plan_file(
         self,
-        staging_root: Path,
-        file_entries: List[FileEntry],
-        scope: MigrationScope,
-        include_build_artifacts: bool,
+        src: Path,
+        archive_path: str,
+        category: str,
+        planned_items: List[Tuple[Path, str, str]],
     ) -> None:
-        """Packs Cephalo's configuration, rules, specialties, patterns, and optionally data."""
-        cephalo_stage = staging_root / "cephalo"
-        cephalo_stage.mkdir(parents=True, exist_ok=True)
+        """Registers a single file to be archived directly without copying."""
+        if src.exists() and src.is_file():
+            planned_items.append((src, archive_path.replace("\\", "/"), category))
 
-        # A. USER_PROFILE.md & Templates
-        for pf_name in ("USER_PROFILE.md", "USER_PROFILE.template.md"):
-            pf = self.base_dir / pf_name
-            if pf.exists():
-                self._stage_file(pf, cephalo_stage / pf_name, "cephalo_profile", file_entries, staging_root)
-
-        # B. Safeguards
-        sf = self.data_dir / "safeguards.json"
-        if sf.exists():
-            self._stage_file(sf, cephalo_stage / "safeguards.json", "cephalo_safeguards", file_entries, staging_root)
-
-        # C. Environment (.env) if exists
-        env_file = self.base_dir / ".env"
-        if env_file.exists():
-            self._stage_file(env_file, cephalo_stage / ".env", "cephalo_env", file_entries, staging_root)
-
-        # D. Specialties (All domain knowledge modules)
-        specialties_dir = self.base_dir / "specialties"
-        if specialties_dir.exists():
-            self._stage_tree(
-                specialties_dir,
-                cephalo_stage / "specialties",
-                "cephalo_specialty",
-                file_entries,
-                staging_root,
-                include_build_artifacts=include_build_artifacts,
-            )
-
-        # E. Patterns
-        patterns_dir = self.base_dir / "patterns"
-        if patterns_dir.exists():
-            self._stage_tree(
-                patterns_dir,
-                cephalo_stage / "patterns",
-                "cephalo_pattern",
-                file_entries,
-                staging_root,
-                include_build_artifacts=include_build_artifacts,
-            )
-
-        # F. Integrations (Harness integration templates)
-        integrations_dir = self.base_dir / "integrations"
-        if integrations_dir.exists():
-            self._stage_tree(
-                integrations_dir,
-                cephalo_stage / "integrations",
-                "cephalo_integration",
-                file_entries,
-                staging_root,
-                include_build_artifacts=include_build_artifacts,
-            )
-
-        # G. Data (LanceDB, Prompts, SQLite DBs) - Included if scope == ALL
-        if scope == MigrationScope.ALL and self.data_dir.exists():
-            stage_data = cephalo_stage / "data"
-            stage_data.mkdir(parents=True, exist_ok=True)
-
-            # Prompts interaction log
-            prompts_file = self.data_dir / "prompts.jsonl"
-            if prompts_file.exists():
-                self._stage_file(prompts_file, stage_data / "prompts.jsonl", "cephalo_prompts", file_entries, staging_root)
-
-            # LanceDB vector tables
-            lancedb_dir = self.data_dir / "lancedb"
-            if lancedb_dir.exists():
-                self._stage_tree(
-                    lancedb_dir,
-                    stage_data / "lancedb",
-                    "cephalo_lancedb",
-                    file_entries,
-                    staging_root,
-                    include_build_artifacts=include_build_artifacts,
-                )
-
-            # State JSON files
-            for state_name in ("continuous_learning_state.json", "daily_digest_state.json", "harvest_state.json", "cephalo_daemon_status.json"):
-                sf_path = self.data_dir / state_name
-                if sf_path.exists():
-                    self._stage_file(sf_path, stage_data / state_name, "cephalo_state", file_entries, staging_root)
-
-            # SQLite databases: perform clean online backup via SQLite backup API
-            for db_name in ("search_cache.db", "agent_tasks.db"):
-                db_path = self.data_dir / db_name
-                if db_path.exists():
-                    dest_db = stage_data / db_name
-                    self._safe_sqlite_backup(db_path, dest_db)
-                    self._register_file_entry(dest_db, "cephalo_sqlite_db", file_entries, staging_root, original_path=db_path)
-
-            # Screen frames keyframes (if present)
-            frames_dir = self.data_dir / "frames"
-            if frames_dir.exists():
-                self._stage_tree(
-                    frames_dir,
-                    stage_data / "frames",
-                    "cephalo_frames",
-                    file_entries,
-                    staging_root,
-                    include_build_artifacts=include_build_artifacts,
-                )
-
-            # SERP cache (if present)
-            serp_dir = self.data_dir / "serp_cache"
-            if serp_dir.exists():
-                self._stage_tree(
-                    serp_dir,
-                    stage_data / "serp_cache",
-                    "cephalo_serp",
-                    file_entries,
-                    staging_root,
-                    include_build_artifacts=include_build_artifacts,
-                )
-
-    def _collect_harnesses(
+    def _plan_tree(
         self,
-        staging_root: Path,
-        file_entries: List[FileEntry],
-        scope: MigrationScope,
-        include_build_artifacts: bool,
-    ) -> Dict[str, Any]:
-        """Packs configuration for all detected agent harnesses."""
-        harnesses = HarnessDetector.detect_all()
-        harnesses_stage = staging_root / "harnesses"
-        harnesses_stage.mkdir(parents=True, exist_ok=True)
-
-        for name, data in harnesses.items():
-            h_stage = harnesses_stage / name
-            h_stage.mkdir(parents=True, exist_ok=True)
-
-            if name == "antigravity":
-                # Config files
-                cfg_stage = h_stage / "config"
-                cfg_stage.mkdir(parents=True, exist_ok=True)
-                for key in ("config_file", "hooks_file", "mcp_file"):
-                    p = data.get(key)
-                    if p and Path(p).exists():
-                        self._stage_file(Path(p), cfg_stage / Path(p).name, "harness_config", file_entries, staging_root)
-
-                # Rules, plugins, projects, sidecars
-                for dir_key in ("rules_dir", "plugins_dir", "projects_dir", "sidecars_dir"):
-                    p = data.get(dir_key)
-                    if p and Path(p).exists():
-                        self._stage_tree(
-                            Path(p),
-                            cfg_stage / Path(p).name,
-                            "harness_config",
-                            file_entries,
-                            staging_root,
-                            include_build_artifacts=include_build_artifacts,
-                        )
-
-                # Global prompt files
-                for md_key in ("agents_md", "gemini_md"):
-                    p = data.get(md_key)
-                    if p and Path(p).exists():
-                        self._stage_file(Path(p), h_stage / Path(p).name, "harness_rules", file_entries, staging_root)
-
-                # Skills: In SETTINGS mode, stage SKILL.md and configs; In ALL mode, stage full skill trees
-                skills_dir = data.get("skills_dir")
-                if skills_dir and Path(skills_dir).exists():
-                    if scope == MigrationScope.ALL:
-                        self._stage_tree(
-                            Path(skills_dir),
-                            cfg_stage / "skills",
-                            "harness_skills",
-                            file_entries,
-                            staging_root,
-                            include_build_artifacts=include_build_artifacts,
-                        )
-                    else:
-                        # Pack SKILL.md and metadata
-                        self._stage_skills_settings_only(
-                            Path(skills_dir),
-                            cfg_stage / "skills",
-                            file_entries,
-                            staging_root,
-                        )
-
-                # Brain data (if ALL)
-                if scope == MigrationScope.ALL:
-                    brain_dir = data.get("brain_dir")
-                    if brain_dir and Path(brain_dir).exists():
-                        self._stage_tree(
-                            Path(brain_dir),
-                            h_stage / "brain",
-                            "harness_brain",
-                            file_entries,
-                            staging_root,
-                            include_build_artifacts=include_build_artifacts,
-                        )
-
-            elif name == "claude_code":
-                for k in ("claude_md", "config_file", "settings_file"):
-                    p = data.get(k)
-                    if p and Path(p).exists():
-                        self._stage_file(Path(p), h_stage / Path(p).name, "harness_config", file_entries, staging_root)
-
-            elif name == "cursor":
-                for k in ("cursor_mcp", "home_cursorrules"):
-                    p = data.get(k)
-                    if p and Path(p).exists():
-                        self._stage_file(Path(p), h_stage / Path(p).name, "harness_config", file_entries, staging_root)
-                cursor_user = data.get("cursor_user")
-                if cursor_user and Path(cursor_user).exists():
-                    for user_f in ("settings.json", "keybindings.json"):
-                        uf_p = Path(cursor_user) / user_f
-                        if uf_p.exists():
-                            self._stage_file(uf_p, h_stage / user_f, "harness_config", file_entries, staging_root)
-
-            elif name == "windsurf":
-                for k in ("mcp_file", "rules_file"):
-                    p = data.get(k)
-                    if p and Path(p).exists():
-                        self._stage_file(Path(p), h_stage / Path(p).name, "harness_config", file_entries, staging_root)
-
-            elif name == "aider":
-                for p in data.get("files", []):
-                    if Path(p).exists():
-                        self._stage_file(Path(p), h_stage / Path(p).name, "harness_config", file_entries, staging_root)
-
-            elif name == "copilot":
-                copilot_inst = data.get("instructions_file")
-                if copilot_inst and Path(copilot_inst).exists():
-                    self._stage_file(Path(copilot_inst), h_stage / Path(copilot_inst).name, "harness_config", file_entries, staging_root)
-
-        return harnesses
-
-    def _collect_projects(
-        self,
-        staging_root: Path,
-        file_entries: List[FileEntry],
-        include_build_artifacts: bool,
-    ) -> List[str]:
-        """Packs all scratch workspace projects and standalone files."""
-        home = HarnessDetector.get_home_dir()
-        scratch_dir = home / ".gemini" / "antigravity" / "scratch"
-        if not scratch_dir.exists():
-            return []
-
-        projects_stage = staging_root / "projects"
-        projects_stage.mkdir(parents=True, exist_ok=True)
-        detected_projects: List[str] = []
-
-        # Find all project folders and root scratch files
-        for item in scratch_dir.iterdir():
-            # Skip second-brain itself since it's already captured as Cephalo core
-            if item.is_dir() and item.name.lower() in ("second-brain", "second_brain"):
+        src_dir: Path,
+        archive_prefix: str,
+        category: str,
+        planned_items: List[Tuple[Path, str, str]],
+        include_build_artifacts: bool = False,
+    ) -> None:
+        """Recursively plans a directory tree with intelligent lossless filtering."""
+        if not src_dir.exists():
+            return
+        for root, dirs, files in os.walk(src_dir):
+            root_p = Path(root)
+            try:
+                rel = root_p.relative_to(src_dir)
+            except ValueError:
                 continue
 
-            if item.is_dir():
-                detected_projects.append(item.name)
-                self._stage_tree(
-                    item,
-                    projects_stage / item.name,
-                    "workspace_project",
-                    file_entries,
-                    staging_root,
-                    include_build_artifacts=include_build_artifacts,
-                )
-            elif item.is_file():
-                if not should_exclude(item.name, include_build_artifacts):
-                    self._stage_file(item, projects_stage / item.name, "workspace_file", file_entries, staging_root)
+            # In-place directory exclusion
+            dirs[:] = [d for d in dirs if not should_exclude(str(rel / d), include_build_artifacts)]
 
-        return detected_projects
+            for f in files:
+                rel_file = str(rel / f) if str(rel) != "." else f
+                if not should_exclude(rel_file, include_build_artifacts):
+                    src_f = root_p / f
+                    arc_f = f"{archive_prefix}/{rel_file}".replace("\\", "/")
+                    planned_items.append((src_f, arc_f, category))
 
-    def _stage_skills_settings_only(
+    def _plan_skills_settings_only(
         self,
         skills_dir: Path,
-        dest_skills_dir: Path,
-        file_entries: List[FileEntry],
-        staging_root: Path,
+        archive_prefix: str,
+        planned_items: List[Tuple[Path, str, str]],
     ) -> None:
         """In settings mode, captures SKILL.md and configuration files without gigabytes of subtrees."""
+        if not skills_dir.exists():
+            return
         for root, dirs, files in os.walk(skills_dir):
             root_p = Path(root)
-            rel_root = root_p.relative_to(skills_dir)
+            try:
+                rel_root = root_p.relative_to(skills_dir)
+            except ValueError:
+                continue
+            dirs[:] = [d for d in dirs if not should_exclude(str(rel_root / d))]
             for f in files:
                 if f.upper() in ("SKILL.MD", "PROMPT.MD", "RULES.MD", "PACKAGE.JSON", "README.MD") or f.endswith((".json", ".yaml", ".yml")):
-                    src_file = root_p / f
-                    dest_file = dest_skills_dir / rel_root / f
-                    self._stage_file(src_file, dest_file, "harness_skill_def", file_entries, staging_root)
+                    src_f = root_p / f
+                    rel_f = str(rel_root / f) if str(rel_root) != "." else f
+                    arc_f = f"{archive_prefix}/{rel_f}".replace("\\", "/")
+                    planned_items.append((src_f, arc_f, "harness_skill_def"))
 
     def _safe_sqlite_backup(self, src_db: Path, dest_db: Path) -> None:
         """Creates a consistent, compacted SQLite snapshot using the online backup API."""
@@ -772,108 +550,244 @@ class MigrationManager:
                 with sqlite3.connect(dest_db) as dest_conn:
                     src_conn.backup(dest_conn)
         except Exception as e:
-            logger.warning(f"SQLite backup API failed for {src_db} ({e}), falling back to standard copy.")
+            logger.warning(f"SQLite backup API failed for {src_db} ({e}), falling back to copy.")
             shutil.copy2(src_db, dest_db)
 
-    def _stage_file(
+    def _plan_cephalo_core(
         self,
-        src: Path,
-        dest: Path,
-        category: str,
-        file_entries: List[FileEntry],
-        staging_root: Path,
+        planned_items: List[Tuple[Path, str, str]],
+        scope: MigrationScope,
+        include_build_artifacts: bool,
+        temp_dir: Path,
     ) -> None:
-        """Copies a single file to staging and registers its metadata and SHA-256."""
-        try:
-            if not src.exists() or not src.is_file():
-                return
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest)
-            self._register_file_entry(dest, category, file_entries, staging_root, original_path=src)
-        except (PermissionError, OSError) as e:
-            logger.warning(f"Skipping inaccessible file {src}: {e}")
+        """Plans Cephalo's configuration, rules, specialties, patterns, and optionally data."""
+        # A. USER_PROFILE.md & Templates
+        for pf_name in ("USER_PROFILE.md", "USER_PROFILE.template.md"):
+            pf = self.base_dir / pf_name
+            self._plan_file(pf, f"cephalo/{pf_name}", "cephalo_profile", planned_items)
 
-    def _stage_tree(
+        # B. Safeguards
+        sf = self.data_dir / "safeguards.json"
+        self._plan_file(sf, "cephalo/safeguards.json", "cephalo_safeguards", planned_items)
+
+        # C. Environment (.env) if exists
+        env_file = self.base_dir / ".env"
+        self._plan_file(env_file, "cephalo/.env", "cephalo_env", planned_items)
+
+        # D. Specialties, Patterns, Integrations
+        for d_name, cat in [("specialties", "cephalo_specialty"), ("patterns", "cephalo_pattern"), ("integrations", "cephalo_integration")]:
+            d = self.base_dir / d_name
+            self._plan_tree(d, f"cephalo/{d_name}", cat, planned_items, include_build_artifacts=include_build_artifacts)
+
+        # E. Data (LanceDB, Prompts, SQLite DBs) - Included if scope == ALL
+        if scope == MigrationScope.ALL and self.data_dir.exists():
+            prompts_file = self.data_dir / "prompts.jsonl"
+            self._plan_file(prompts_file, "cephalo/data/prompts.jsonl", "cephalo_prompts", planned_items)
+
+            lancedb_dir = self.data_dir / "lancedb"
+            self._plan_tree(lancedb_dir, "cephalo/data/lancedb", "cephalo_lancedb", planned_items, include_build_artifacts=include_build_artifacts)
+
+            for state_name in ("continuous_learning_state.json", "daily_digest_state.json", "harvest_state.json", "cephalo_daemon_status.json"):
+                sf_path = self.data_dir / state_name
+                self._plan_file(sf_path, f"cephalo/data/{state_name}", "cephalo_state", planned_items)
+
+            for db_name in ("search_cache.db", "agent_tasks.db"):
+                db_path = self.data_dir / db_name
+                if db_path.exists():
+                    dest_db = temp_dir / db_name
+                    self._safe_sqlite_backup(db_path, dest_db)
+                    planned_items.append((dest_db, f"cephalo/data/{db_name}", "cephalo_sqlite_db"))
+
+            for extra_d, cat in [("frames", "cephalo_frames"), ("serp_cache", "cephalo_serp")]:
+                d = self.data_dir / extra_d
+                self._plan_tree(d, f"cephalo/data/{extra_d}", cat, planned_items, include_build_artifacts=include_build_artifacts)
+
+    def _plan_harnesses(
         self,
-        src_dir: Path,
-        dest_dir: Path,
-        category: str,
-        file_entries: List[FileEntry],
-        staging_root: Path,
-        include_build_artifacts: bool = False,
-    ) -> None:
-        """Recursively copies a directory tree while applying intelligent lossless filtering."""
-        for root, dirs, files in os.walk(src_dir):
-            root_p = Path(root)
-            rel = root_p.relative_to(src_dir)
+        planned_items: List[Tuple[Path, str, str]],
+        scope: MigrationScope,
+        include_build_artifacts: bool,
+    ) -> Dict[str, Any]:
+        """Plans configuration files for all detected agent harnesses."""
+        harnesses = HarnessDetector.detect_all()
 
-            # Filter out excluded directories in-place
-            dirs[:] = [d for d in dirs if not should_exclude(str(rel / d), include_build_artifacts)]
+        for name, data in harnesses.items():
+            prefix = f"harnesses/{name}"
+            if name == "antigravity":
+                cfg_prefix = f"{prefix}/config"
+                for key in ("config_file", "hooks_file", "mcp_file"):
+                    p = data.get(key)
+                    if p and Path(p).exists():
+                        self._plan_file(Path(p), f"{cfg_prefix}/{Path(p).name}", "harness_config", planned_items)
 
-            target_dir = dest_dir / rel
-            target_dir.mkdir(parents=True, exist_ok=True)
+                for dir_key in ("rules_dir", "plugins_dir", "projects_dir", "sidecars_dir"):
+                    p = data.get(dir_key)
+                    if p and Path(p).exists():
+                        self._plan_tree(Path(p), f"{cfg_prefix}/{Path(p).name}", "harness_config", planned_items, include_build_artifacts=include_build_artifacts)
 
-            for f in files:
-                rel_file = str(rel / f) if str(rel) != "." else f
-                if not should_exclude(rel_file, include_build_artifacts):
-                    src_file = root_p / f
-                    dest_file = target_dir / f
-                    try:
-                        shutil.copy2(src_file, dest_file)
-                        self._register_file_entry(dest_file, category, file_entries, staging_root, original_path=src_file)
-                    except (PermissionError, OSError) as e:
-                        logger.warning(f"Skipping inaccessible file {src_file}: {e}")
+                for md_key in ("agents_md", "gemini_md"):
+                    p = data.get(md_key)
+                    if p and Path(p).exists():
+                        self._plan_file(Path(p), f"{prefix}/{Path(p).name}", "harness_rules", planned_items)
 
-    def _register_file_entry(
+                skills_dir = data.get("skills_dir")
+                if skills_dir and Path(skills_dir).exists():
+                    if scope == MigrationScope.ALL:
+                        self._plan_tree(Path(skills_dir), f"{cfg_prefix}/skills", "harness_skills", planned_items, include_build_artifacts=include_build_artifacts)
+                    else:
+                        self._plan_skills_settings_only(Path(skills_dir), f"{cfg_prefix}/skills", planned_items)
+
+                if scope == MigrationScope.ALL:
+                    brain_dir = data.get("brain_dir")
+                    if brain_dir and Path(brain_dir).exists():
+                        self._plan_tree(Path(brain_dir), f"{prefix}/brain", "harness_brain", planned_items, include_build_artifacts=include_build_artifacts)
+
+            elif name == "claude_code":
+                for k in ("claude_md", "config_file", "settings_file"):
+                    p = data.get(k)
+                    if p and Path(p).exists():
+                        self._plan_file(Path(p), f"{prefix}/{Path(p).name}", "harness_config", planned_items)
+
+            elif name == "cursor":
+                for k in ("cursor_mcp", "home_cursorrules"):
+                    p = data.get(k)
+                    if p and Path(p).exists():
+                        self._plan_file(Path(p), f"{prefix}/{Path(p).name}", "harness_config", planned_items)
+                cursor_user = data.get("cursor_user")
+                if cursor_user and Path(cursor_user).exists():
+                    for user_f in ("settings.json", "keybindings.json"):
+                        uf_p = Path(cursor_user) / user_f
+                        self._plan_file(uf_p, f"{prefix}/{user_f}", "harness_config", planned_items)
+
+            elif name == "windsurf":
+                for k in ("mcp_file", "rules_file"):
+                    p = data.get(k)
+                    if p and Path(p).exists():
+                        self._plan_file(Path(p), f"{prefix}/{Path(p).name}", "harness_config", planned_items)
+
+            elif name == "aider":
+                for p in data.get("files", []):
+                    if Path(p).exists():
+                        self._plan_file(Path(p), f"{prefix}/{Path(p).name}", "harness_config", planned_items)
+
+            elif name == "copilot":
+                copilot_inst = data.get("instructions_file")
+                if copilot_inst and Path(copilot_inst).exists():
+                    self._plan_file(Path(copilot_inst), f"{prefix}/{Path(copilot_inst).name}", "harness_config", planned_items)
+
+        return harnesses
+
+    def _plan_projects(
         self,
-        staged_file: Path,
-        category: str,
-        file_entries: List[FileEntry],
-        staging_root: Path,
-        original_path: Optional[Path] = None,
-    ) -> None:
-        """Computes hash and registers file in file entries list."""
-        rel_archive = staged_file.relative_to(staging_root).as_posix()
-        stat = staged_file.stat()
-        sha = compute_sha256(staged_file)
-        orig_str = str(original_path or staged_file)
+        planned_items: List[Tuple[Path, str, str]],
+        include_build_artifacts: bool,
+    ) -> List[str]:
+        """Plans all scratch workspace projects and standalone files."""
+        home = HarnessDetector.get_home_dir()
+        scratch_dir = home / ".gemini" / "antigravity" / "scratch"
+        if not scratch_dir.exists():
+            return []
 
-        entry = FileEntry(
-            archive_path=rel_archive,
-            source_path=orig_str,
-            category=category,
-            size=stat.st_size,
-            sha256=sha,
-            modified_at=datetime.datetime.fromtimestamp(stat.st_mtime, tz=datetime.timezone.utc).isoformat(),
-        )
-        file_entries.append(entry)
+        detected_projects: List[str] = []
+        for item in scratch_dir.iterdir():
+            if item.is_dir() and item.name.lower() in ("second-brain", "second_brain"):
+                continue
 
-    def _compress_staging(
+            if item.is_dir():
+                detected_projects.append(item.name)
+                self._plan_tree(
+                    item,
+                    f"projects/{item.name}",
+                    "workspace_project",
+                    planned_items,
+                    include_build_artifacts=include_build_artifacts,
+                )
+            elif item.is_file():
+                if not should_exclude(item.name, include_build_artifacts):
+                    self._plan_file(item, f"projects/{item.name}", "workspace_file", planned_items)
+
+        return detected_projects
+
+    def _hash_planned_items(
         self,
-        staging_root: Path,
+        planned_items: List[Tuple[Path, str, str]],
+    ) -> Tuple[List[FileEntry], List[Tuple[Path, str, str]]]:
+        """Hashes all planned files in parallel using multi-threaded I/O."""
+        def _hash_one(item: Tuple[Path, str, str]) -> Optional[Tuple[FileEntry, Tuple[Path, str, str]]]:
+            src, arc, cat = item
+            try:
+                if not src.exists() or not src.is_file():
+                    return None
+                st = src.stat()
+                sha = compute_sha256(src)
+                entry = FileEntry(
+                    archive_path=arc,
+                    source_path=str(src),
+                    category=cat,
+                    size=st.st_size,
+                    sha256=sha,
+                    modified_at=datetime.datetime.fromtimestamp(st.st_mtime, tz=datetime.timezone.utc).isoformat(),
+                )
+                return entry, item
+            except (PermissionError, OSError) as e:
+                logger.warning(f"Skipping inaccessible file {src}: {e}")
+                return None
+
+        workers = min(16, (os.cpu_count() or 4) * 2)
+        file_entries: List[FileEntry] = []
+        valid_items: List[Tuple[Path, str, str]] = []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            results = executor.map(_hash_one, planned_items)
+            for res in results:
+                if res is not None:
+                    entry, item = res
+                    file_entries.append(entry)
+                    valid_items.append(item)
+
+        return file_entries, valid_items
+
+    def _stream_to_archive(
+        self,
         output_path: Path,
+        manifest_bytes: bytes,
+        valid_items: List[Tuple[Path, str, str]],
         compression_format: CompressionFormat,
+        preset: int = 6,
     ) -> None:
-        """Compresses the staged bundle into the specified lossless format."""
+        """Compresses planned items directly into archive with manifest as first entry."""
         fmt = compression_format.value if isinstance(compression_format, CompressionFormat) else str(compression_format)
 
-        if fmt == "xz":
-            # LZMA2 preset 9 for maximum lossless compression ratio and fast execution
-            with tarfile.open(output_path, mode="w:xz", preset=9) as tar:
-                for item in staging_root.iterdir():
-                    tar.add(item, arcname=item.name)
-        elif fmt == "gz":
-            with tarfile.open(output_path, mode="w:gz", compresslevel=9) as tar:
-                for item in staging_root.iterdir():
-                    tar.add(item, arcname=item.name)
+        if fmt in ("xz", "gz"):
+            mode = f"w:{fmt}"
+            kwargs: Dict[str, Any] = {}
+            if fmt == "xz":
+                kwargs["preset"] = preset
+            else:
+                kwargs["compresslevel"] = 6
+
+            with tarfile.open(output_path, mode=mode, **kwargs) as tar:
+                # 1. Manifest FIRST for instant inspection
+                ti = tarfile.TarInfo(name="manifest.json")
+                ti.size = len(manifest_bytes)
+                ti.mtime = int(time.time())
+                ti.mode = 0o644
+                tar.addfile(ti, io.BytesIO(manifest_bytes))
+
+                # 2. Files streamed directly
+                for src_f, arc_f, _ in valid_items:
+                    try:
+                        tar.add(src_f, arcname=arc_f)
+                    except (PermissionError, OSError) as e:
+                        logger.warning(f"Skipping file during archiving {src_f}: {e}")
         elif fmt == "zip":
-            with zipfile.ZipFile(output_path, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-                for root, _, files in os.walk(staging_root):
-                    root_p = Path(root)
-                    for f in files:
-                        p = root_p / f
-                        arcname = p.relative_to(staging_root).as_posix()
-                        zf.write(p, arcname=arcname)
+            with zipfile.ZipFile(output_path, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+                zf.writestr("manifest.json", manifest_bytes)
+                for src_f, arc_f, _ in valid_items:
+                    try:
+                        zf.write(src_f, arcname=arc_f)
+                    except (PermissionError, OSError) as e:
+                        logger.warning(f"Skipping file during zip {src_f}: {e}")
         else:
             raise ValueError(f"Unsupported compression format: {fmt}")
 
@@ -1291,6 +1205,13 @@ class MigrationManager:
         if name.endswith((".tar.xz", ".tar.gz", ".tar.bz2", ".tar")):
             mode = "r:*"
             with tarfile.open(archive_path, mode=mode) as tar:
+                # Fast path: manifest.json placed as the first member
+                first = tar.next()
+                if first and first.name == "manifest.json":
+                    f = tar.extractfile(first)
+                    if f:
+                        return json.loads(f.read().decode("utf-8"))
+                # Fallback: scan if manifest was placed elsewhere
                 try:
                     member = tar.getmember("manifest.json")
                 except KeyError:

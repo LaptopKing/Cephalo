@@ -1955,11 +1955,16 @@ def cmd_migrate(args):
         print("Scanning harnesses, settings, rules, and memory...")
         print("-" * 65)
 
+        preset = getattr(args, "preset", 6)
+        fast = getattr(args, "fast", False)
+
         res = manager.create_migration(
             scope=scope,
             output_path=out_path,
             compression_format=fmt,
             include_build_artifacts=inc_build,
+            preset=preset,
+            fast=fast,
         )
 
         if getattr(args, "json", False):
@@ -2307,7 +2312,9 @@ def main():
     mig_p.add_argument("--all", "-a", action="store_true", help="Migrate Cephalo vector data, prompt memory, SQLite DBs, and all workspace projects in addition to settings.")
     mig_p.add_argument("--output", "-o", type=str, default=None, help="Output destination archive path.")
     mig_p.add_argument("--format", "-f", type=str, choices=["xz", "gz", "zip"], default="xz", help="Compression format (default: xz for maximum lossless compression).")
-    mig_p.add_argument("--include-build-artifacts", action="store_true", help="Include build caches (target/, .venv/) in project archives.")
+    mig_p.add_argument("--include-build-artifacts", action="store_true", help="Include build caches (target/, .venv/) in project archives.")
+    mig_p.add_argument("--fast", action="store_true", help="Ultra-fast export (uses high-throughput preset).")
+    mig_p.add_argument("--preset", type=int, default=6, help="LZMA compression preset (0-9, default: 6).")
 
     mig_sub = mig_p.add_subparsers(dest="migrate_action", help="Migration action (export, restore, inspect, list)")
 
@@ -2316,7 +2323,9 @@ def main():
     mig_exp_p.add_argument("--all", "-a", action="store_true", help="Include Cephalo data (LanceDB, prompts) and scratch projects.")
     mig_exp_p.add_argument("--output", "-o", type=str, default=None, help="Output destination archive path.")
     mig_exp_p.add_argument("--format", "-f", type=str, choices=["xz", "gz", "zip"], default="xz", help="Compression format (default: xz).")
-    mig_exp_p.add_argument("--include-build-artifacts", action="store_true", help="Include compiler build artifacts.")
+    mig_exp_p.add_argument("--include-build-artifacts", action="store_true", help="Include compiler build artifacts.")
+    mig_exp_p.add_argument("--fast", action="store_true", help="Ultra-fast export (uses high-throughput preset).")
+    mig_exp_p.add_argument("--preset", type=int, default=6, help="LZMA compression preset (0-9, default: 6).")
 
     # migrate restore
     mig_res_p = mig_sub.add_parser("restore", parents=[shared_parser], help="Restore a migration archive and set up all harnesses with a single command.")
