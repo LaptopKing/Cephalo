@@ -47,6 +47,7 @@ import tarfile
 import tempfile
 import time
 import zipfile
+import zlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -99,6 +100,10 @@ EPHEMERAL_PATTERNS: Set[str] = {
     "*~",
     "*.db-wal",
     "*.db-shm",
+    "*.tar.xz",
+    "*.tar.gz",
+    "*.tar",
+    "*.cephalo.*",
 }
 
 # Build directories excluded unless user passes --include-build-artifacts
@@ -384,7 +389,7 @@ class MigrationManager:
         fmt_str = compression_format.value if isinstance(compression_format, CompressionFormat) else str(compression_format)
 
         if fast:
-            preset = 3
+            preset = 1
 
         if not output_path:
             ext = f".cephalo.tar.{fmt_str}" if fmt_str in ("xz", "gz") else f".cephalo.{fmt_str}"
@@ -694,19 +699,35 @@ class MigrationManager:
                 continue
 
             if item.is_dir():
-                detected_projects.append(item.name)
-                self._plan_tree(
-                    item,
-                    f"projects/{item.name}",
-                    "workspace_project",
-                    planned_items,
-                    include_build_artifacts=include_build_artifacts,
-                )
+                if item.name.lower() == "projects":
+                    # Scan inside scratch/projects/ for individual named projects (e.g. 02-getmynews)
+                    for sub in item.iterdir():
+                        if sub.is_dir():
+                            detected_projects.append(sub.name)
+                            self._plan_tree(
+                                sub,
+                                f"projects/projects/{sub.name}",
+                                f"workspace_project:{sub.name}",
+                                planned_items,
+                                include_build_artifacts=include_build_artifacts,
+                            )
+                        elif sub.is_file():
+                            if not should_exclude(sub.name, include_build_artifacts):
+                                self._plan_file(sub, f"projects/projects/{sub.name}", "workspace_file", planned_items)
+                else:
+                    detected_projects.append(item.name)
+                    self._plan_tree(
+                        item,
+                        f"projects/{item.name}",
+                        f"workspace_project:{item.name}",
+                        planned_items,
+                        include_build_artifacts=include_build_artifacts,
+                    )
             elif item.is_file():
                 if not should_exclude(item.name, include_build_artifacts):
                     self._plan_file(item, f"projects/{item.name}", "workspace_file", planned_items)
 
-        return detected_projects
+        return sorted(detected_projects)
 
     def _hash_planned_items(
         self,
@@ -781,13 +802,44 @@ class MigrationManager:
                     except (PermissionError, OSError) as e:
                         logger.warning(f"Skipping file during archiving {src_f}: {e}")
         elif fmt == "zip":
+            # Multi-threaded parallel zip compression for ultra-fast exports
+            workers = min(32, (os.cpu_count() or 4) * 2)
             with zipfile.ZipFile(output_path, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
                 zf.writestr("manifest.json", manifest_bytes)
-                for src_f, arc_f, _ in valid_items:
+
+                def _compress_file(item: Tuple[Path, str, str]) -> Optional[Tuple[str, Optional[bytes], int, int]]:
+                    src_f, arc_f, _ = item
                     try:
-                        zf.write(src_f, arcname=arc_f)
-                    except (PermissionError, OSError) as e:
-                        logger.warning(f"Skipping file during zip {src_f}: {e}")
+                        if not src_f.exists() or not src_f.is_file():
+                            return None
+                        st = src_f.stat()
+                        # For files under 64MB, compress in parallel thread
+                        if st.st_size > 64 * 1024 * 1024:
+                            return (arc_f, None, st.st_size, 0)
+                        data = src_f.read_bytes()
+                        compressed = zlib.compress(data, 6)
+                        crc = zlib.crc32(data)
+                        return (arc_f, compressed, len(data), crc)
+                    except Exception as e:
+                        logger.warning(f"Error reading file for zip {src_f}: {e}")
+                        return None
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                    for res in executor.map(_compress_file, valid_items):
+                        if res is not None:
+                            arc_f, comp_data, orig_size, crc = res
+                            if comp_data is not None:
+                                zinfo = zipfile.ZipInfo(filename=arc_f, date_time=time.localtime(time.time())[:6])
+                                zinfo.compress_type = zipfile.ZIP_DEFLATED
+                                zinfo.file_size = orig_size
+                                zinfo.compress_size = len(comp_data)
+                                zinfo.CRC = crc
+                                zf.writestr(zinfo, comp_data)
+                            else:
+                                for src_orig, arc_orig, _ in valid_items:
+                                    if arc_orig == arc_f:
+                                        zf.write(src_orig, arcname=arc_orig)
+                                        break
         else:
             raise ValueError(f"Unsupported compression format: {fmt}")
 
