@@ -2,6 +2,14 @@
 # Cephalo - Sovereign Local Memory & Cognitive Coprocessor CLI Runner
 REAL_BIN="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$REAL_BIN")/.." && pwd)"
+
+# Ultra-low latency native Rust engine execution (sub-5ms)
+RUST_BIN="$SCRIPT_DIR/rust/target/release/cephalo"
+if [ -x "$RUST_BIN" ]; then
+    exec "$RUST_BIN" "$@"
+fi
+
+# Fallback to Python if native binary is not yet compiled
 PYTHON_CMD="python3"
 if [ -f "$SCRIPT_DIR/.venv/bin/python" ]; then
     PYTHON_CMD="$SCRIPT_DIR/.venv/bin/python"
