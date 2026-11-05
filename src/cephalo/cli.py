@@ -1224,8 +1224,8 @@ def cmd_daemon(args) -> None:
         get_daemon_status,
         start_daemon_detached,
         stop_daemon,
-        install_windows_task,
-        uninstall_windows_task,
+        install_autostart,
+        uninstall_autostart,
     )
     action = getattr(args, "daemon_action", None) or "status"
     interval = getattr(args, "interval", 90)
@@ -1259,10 +1259,10 @@ def cmd_daemon(args) -> None:
                 if "git_pushed" in last_c:
                     print(f"GitHub Sync:    {'Pushed' if last_c['git_pushed'] else 'Up to date'}")
             print("=" * 65)
-    elif action == "install-task":
-        install_windows_task()
-    elif action == "uninstall-task":
-        uninstall_windows_task()
+    elif action in ("install-task", "install-autostart", "autostart"):
+        install_autostart()
+    elif action in ("uninstall-task", "uninstall-autostart"):
+        uninstall_autostart()
 
 
 def maybe_auto_learn() -> None:
@@ -1766,6 +1766,122 @@ def cmd_task(args):
             print(json.dumps(task.get("checkpoint_state", {}), indent=4))
 
 
+def cmd_subagent(args):
+    """Manages subagent lifecycle, checkpointing, power throttling, and crash recovery."""
+    from cephalo.services.subagent_governor import SubagentGovernor
+    gov = SubagentGovernor()
+    action = getattr(args, "subagent_action", "status") or "status"
+
+    if action == "status" or action == "governor":
+        metrics = gov.inspect_resources()
+        if getattr(args, "json", False):
+            print(json.dumps(metrics, indent=2, ensure_ascii=False))
+            return
+
+        print("=" * 65)
+        print("  ⚡ CEPHALO SUBAGENT RESOURCE GOVERNOR")
+        print("=" * 65)
+        print(f"  Power Source:      {'🔋 Battery' if metrics['on_battery'] else '🔌 AC Power'}")
+        if metrics.get("battery_percent") is not None:
+            print(f"  Battery Level:     {metrics['battery_percent']}%")
+        print(f"  CPU Utilization:   {metrics['cpu_percent']}% (Load 1m: {metrics['load_1m']})")
+        print(f"  Available Memory:  {metrics['mem_available_mb']} MB")
+        print(f"  Governor Mode:     {metrics['mode']}")
+        print(f"  Safe Concurrency:  {metrics['safe_concurrency']} subagent(s) max")
+        print(f"  Throttle Advice:   {metrics['throttle_reason']}")
+        print("=" * 65)
+
+        interrupted = gov.get_interrupted_tasks()
+        if interrupted:
+            print(f"\n⚠️  {len(interrupted)} Interrupted Subagent Task(s) Found (from crash/reboot):")
+            for it in interrupted:
+                print(f"   • [{it['task_id']}] Step {it['step_index']}/{it['total_steps']}: {it['user_goal']}")
+                print(f"     Run `cephalo subagent resume {it['task_id']}` to restore state.")
+
+    elif action == "checkpoint":
+        task_id = args.task_id
+        step = getattr(args, "step", 0)
+        state_raw = getattr(args, "state", "{}")
+        try:
+            state_dict = json.loads(state_raw)
+        except Exception:
+            state_dict = {"raw_state": state_raw}
+        res = gov.checkpoint_subagent(task_id=task_id, step_index=step, checkpoint_state=state_dict)
+        print(f"[+] Checkpointed task {task_id} at step {step}.")
+
+    elif action == "resume":
+        task_id = args.task_id
+        brief = gov.build_resume_brief(task_id)
+        if not brief:
+            print(f"[-] Task '{task_id}' not found.")
+            return
+        if getattr(args, "json", False):
+            task = gov.ledger.get_task(task_id)
+            print(json.dumps(task, indent=2, ensure_ascii=False))
+        else:
+            print(brief)
+
+    elif action == "list":
+        tasks = gov.ledger.list_tasks(limit=30)
+        if getattr(args, "json", False):
+            print(json.dumps(tasks, indent=2, ensure_ascii=False))
+        else:
+            print(f"📋 Subagent Tasks ({len(tasks)}):")
+            for t in tasks:
+                print(f"[{t['status'].upper():12}] {t['task_id']} | Step {t['step_index']}/{t['total_steps']} | {t['user_goal'][:45]}")
+
+
+def cmd_queue(args):
+    """Manages the serialized background work queue (FastEmbed, ONNX, OCR, Learning)."""
+    from cephalo.services.job_queue import JobQueue, QueueWorker
+    queue = JobQueue()
+    action = getattr(args, "queue_action", "status") or "status"
+
+    if action == "status":
+        st = queue.get_status()
+        if getattr(args, "json", False):
+            print(json.dumps(st, indent=2, ensure_ascii=False))
+            return
+
+        print("=" * 65)
+        print("  🔄 CEPHALO SERIALIZED WORK QUEUE")
+        print("=" * 65)
+        print(f"  Pending Jobs:    {st['pending']}")
+        print(f"  Running Jobs:    {st['running']}")
+        print(f"  Completed Jobs:  {st['completed']}")
+        print(f"  Failed Jobs:     {st['failed']}")
+        if st.get("current_running_job"):
+            rj = st["current_running_job"]
+            print(f"  Active Task:     #{rj['id']} [{rj['job_type']}] started at {rj['started_at']}")
+        else:
+            print("  Active Task:     None (Idle / Cool)")
+        print("=" * 65)
+
+    elif action == "list":
+        jobs = queue.list_jobs(limit=30)
+        if getattr(args, "json", False):
+            print(json.dumps(jobs, indent=2, ensure_ascii=False))
+            return
+        print(f"📋 Background Work Queue ({len(jobs)} jobs):")
+        print("-" * 75)
+        for j in jobs:
+            err = f" - Error: {j['error_message'][:30]}" if j.get("error_message") else ""
+            print(f"[{j['status'].upper():9}] #{j['id']:<4} Prio:{j['priority']} {j['job_type']:<20} ({j['created_at'][:19]}){err}")
+        print("-" * 75)
+
+    elif action == "run":
+        worker = QueueWorker(queue)
+        print("[*] Processing queue jobs sequentially...")
+        count = 0
+        while worker.process_one(sync=True):
+            count += 1
+        print(f"[+] Processed {count} job(s). Queue is now clear.")
+
+    elif action == "clear":
+        cleared = queue.clear_history(hours_old=0)
+        print(f"[+] Cleared {cleared} completed/failed history records from queue.")
+
+
 def cmd_ocr(args):
     """Runs ultra-fast pure-CPU Indra OCR on image or document."""
     file_path = Path(args.file_path)
@@ -2246,6 +2362,9 @@ def main():
     daemon_start_p.add_argument("--interval", type=int, default=90, help="Interval in seconds.")
     daemon_sub.add_parser("stop", parents=[shared_parser], help="Stop running background daemon.")
     daemon_sub.add_parser("status", parents=[shared_parser], help="Check daemon status and last cycle.")
+    daemon_sub.add_parser("autostart", parents=[shared_parser], help="Configure daemon to automatically start on boot across Linux, macOS, and Windows.")
+    daemon_sub.add_parser("install-autostart", parents=[shared_parser], help="Install cross-platform boot autostart service.")
+    daemon_sub.add_parser("uninstall-autostart", parents=[shared_parser], help="Uninstall cross-platform boot autostart service.")
     daemon_sub.add_parser("install-task", parents=[shared_parser], help="Install Windows Scheduled Task (auto-start on logon).")
     daemon_sub.add_parser("uninstall-task", parents=[shared_parser], help="Uninstall Windows Scheduled Task.")
 
@@ -2294,6 +2413,29 @@ def main():
     carry_p = subparsers.add_parser("carryover", parents=[shared_parser], help="Output high-density compaction carryover memory anchor.")
     carry_p.add_argument("--specialty", type=str, default=None, help="Active project specialty to include.")
 
+    # Subagent (Resource Governor & State Recovery)
+    subagent_p = subparsers.add_parser("subagent", parents=[shared_parser], help="Manage subagent concurrency, hardware governor, and state recovery.")
+    subagent_sub = subagent_p.add_subparsers(dest="subagent_action", help="Subagent action")
+    subagent_sub.add_parser("status", parents=[shared_parser], help="Inspect battery, CPU load, and safe subagent concurrency.")
+    subagent_sub.add_parser("governor", parents=[shared_parser], help="Run hardware governor inspection.")
+    subagent_sub.add_parser("list", parents=[shared_parser], help="List all tracked subagent tasks.")
+    
+    subagent_res_p = subagent_sub.add_parser("resume", parents=[shared_parser], help="Resume an interrupted subagent task from its last checkpoint.")
+    subagent_res_p.add_argument("task_id", type=str, help="Task ID to resume.")
+
+    subagent_chk_p = subagent_sub.add_parser("checkpoint", parents=[shared_parser], help="Checkpoint subagent step progress.")
+    subagent_chk_p.add_argument("task_id", type=str, help="Task ID to checkpoint.")
+    subagent_chk_p.add_argument("--step", type=int, default=0, help="Step index completed.")
+    subagent_chk_p.add_argument("--state", type=str, default="{}", help="JSON checkpoint state.")
+
+    # Queue (Serialized Work Queue for Heavy Background Tasks)
+    queue_p = subparsers.add_parser("queue", parents=[shared_parser], help="Manage serialized work queue for FastEmbed, ONNX, and OCR tasks.")
+    queue_sub = queue_p.add_subparsers(dest="queue_action", help="Queue action")
+    queue_sub.add_parser("status", parents=[shared_parser], help="View queued, running, and completed tasks.")
+    queue_sub.add_parser("list", parents=[shared_parser], help="List recent background jobs.")
+    queue_sub.add_parser("run", parents=[shared_parser], help="Process pending jobs immediately.")
+    queue_sub.add_parser("clear", parents=[shared_parser], help="Clear completed/failed job history.")
+
     # Task (Multi-Agent Coordination & Checkpoint Ledger)
     task_p = subparsers.add_parser("task", parents=[shared_parser], help="Manage multi-agent task coordination and rate-limit recovery ledger.")
     task_sub = task_p.add_subparsers(dest="task_action", help="Task action")
@@ -2312,8 +2454,8 @@ def main():
     mig_p.add_argument("--all", "-a", action="store_true", help="Migrate Cephalo vector data, prompt memory, SQLite DBs, and all workspace projects in addition to settings.")
     mig_p.add_argument("--output", "-o", type=str, default=None, help="Output destination archive path.")
     mig_p.add_argument("--format", "-f", type=str, choices=["xz", "gz", "zip"], default="xz", help="Compression format (default: xz for maximum lossless compression).")
-    mig_p.add_argument("--include-build-artifacts", action="store_true", help="Include build caches (target/, .venv/) in project archives.")
-    mig_p.add_argument("--fast", action="store_true", help="Ultra-fast export (uses high-throughput preset).")
+    mig_p.add_argument("--include-build-artifacts", action="store_true", help="Include build caches (target/, .venv/) in project archives.")
+    mig_p.add_argument("--fast", action="store_true", help="Ultra-fast export (uses high-throughput preset).")
     mig_p.add_argument("--preset", type=int, default=6, help="LZMA compression preset (0-9, default: 6).")
 
     mig_sub = mig_p.add_subparsers(dest="migrate_action", help="Migration action (export, restore, inspect, list)")
@@ -2323,8 +2465,8 @@ def main():
     mig_exp_p.add_argument("--all", "-a", action="store_true", help="Include Cephalo data (LanceDB, prompts) and scratch projects.")
     mig_exp_p.add_argument("--output", "-o", type=str, default=None, help="Output destination archive path.")
     mig_exp_p.add_argument("--format", "-f", type=str, choices=["xz", "gz", "zip"], default="xz", help="Compression format (default: xz).")
-    mig_exp_p.add_argument("--include-build-artifacts", action="store_true", help="Include compiler build artifacts.")
-    mig_exp_p.add_argument("--fast", action="store_true", help="Ultra-fast export (uses high-throughput preset).")
+    mig_exp_p.add_argument("--include-build-artifacts", action="store_true", help="Include compiler build artifacts.")
+    mig_exp_p.add_argument("--fast", action="store_true", help="Ultra-fast export (uses high-throughput preset).")
     mig_exp_p.add_argument("--preset", type=int, default=6, help="LZMA compression preset (0-9, default: 6).")
 
     # migrate restore
@@ -2372,6 +2514,8 @@ def main():
         "digest": cmd_digest,
         "carryover": cmd_carryover,
         "task": cmd_task,
+        "subagent": cmd_subagent,
+        "queue": cmd_queue,
         "ocr": cmd_ocr,
         "migrate": cmd_migrate,
     }

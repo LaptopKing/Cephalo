@@ -113,6 +113,13 @@ data['cephalo-autonomous-brain'] = {
     'Stop': [{'type': 'command', 'command': f'\"{py_exe}\" \"{harvest}\" --stop-hook', 'timeout': 15}]
 }
 
+with open(path, 'w', encoding='utf-8') as f:
+    json.dump(data, f, indent=2)
+" "$hooks_file" "$py_cmd" "$harvest_path"
+
+    echo "      Safely merged Cephalo hooks into $hooks_file."
+}
+
 # Helper: Safely merge MCP server configuration non-destructively
 merge_mcp_config() {
     local mcp_file="$1"
@@ -154,17 +161,12 @@ with open(path, 'w', encoding='utf-8') as f:
 " "$mcp_file" "$py_cmd" "$mcp_server" "$src_dir"
 }
 
-with open(path, 'w', encoding='utf-8') as f:
-    json.dump(data, f, indent=2)
-" "$hooks_file" "$py_cmd" "$harvest_path"
-
-    echo "      Safely merged Cephalo hooks into $hooks_file."
-}
-
 # 1. Determine Target Directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/brain.py" ]; then
     TARGET_DIR="$SCRIPT_DIR"
+elif [ -f "$SCRIPT_DIR/../brain.py" ]; then
+    TARGET_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 elif [ -f "$HOME/.gemini/antigravity/scratch/second-brain/brain.py" ]; then
     TARGET_DIR="$HOME/.gemini/antigravity/scratch/second-brain"
 elif [ -f "brain.py" ]; then
@@ -221,7 +223,13 @@ chmod +x "$TARGET_DIR/bin/cephalo"
 chmod +x "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
 BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
-ln -sf "$TARGET_DIR/cephalo" "$BIN_DIR/cephalo"
+ln -sf "$TARGET_DIR/bin/cephalo" "$BIN_DIR/cephalo"
+if [ -d "$HOME/.gemini/antigravity-cli/bin" ]; then
+    ln -sf "$TARGET_DIR/bin/cephalo" "$HOME/.gemini/antigravity-cli/bin/cephalo"
+fi
+if [ -d "$HOME/.gemini/antigravity/bin" ]; then
+    ln -sf "$TARGET_DIR/bin/cephalo" "$HOME/.gemini/antigravity/bin/cephalo"
+fi
 
 # 6. Adaptive Multi-Harness Agent Integrations
 echo "[5/6] Configuring Multi-Harness Agent integrations (non-destructive)..."

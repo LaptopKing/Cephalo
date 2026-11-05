@@ -1,0 +1,29 @@
+{
+  "enabled": true,
+  "blacklisted_processes": [
+    "1password",
+    "bitwarden",
+    "keepass",
+    "keepassxc",
+    "vaultwarden",
+    "lastpass",
+    "authenticator",
+    "authy"
+  ],
+  "blacklisted_window_titles": [
+    "(?i)incognito",
+    "(?i)private browsing",
+    "(?i)inprivate",
+    "(?i)password",
+    "(?i)credential",
+    "(?i)payment|checkout|credit card|cvv|security code"
+  ],
+  "blacklisted_domains": [
+    "*.bank*",
+    "paypal.com",
+    "stripe.com/dashboard",
+    "revolut.com",
+    "wise.com"
+  ],
+  "pause_on_fullscreen_video": true
+}

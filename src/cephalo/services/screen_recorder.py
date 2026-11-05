@@ -236,7 +236,36 @@ class ScreenMemoryEngine:
                 "process_name": proc,
             }
 
-        # 2. Grab Image
+        # 2. Cooldown & Flicker Debounce Protection
+        # Prevents fast-scrolling AI agent terminal output or htop graphs from flooding CPU with OCR
+        try:
+            from cephalo.services.subagent_governor import SubagentGovernor
+            res = SubagentGovernor().inspect_resources()
+            min_interval = 90 if res.get("on_battery") else 45
+        except Exception:
+            min_interval = 45
+
+        elapsed = (now - self.last_frame_time).total_seconds() if self.last_frame_time else 999.0
+
+        # High-churn monitor suppression (htop, top, btop, watch)
+        lower_title = title.lower()
+        lower_proc = proc.lower()
+        if any(h in lower_title or h in lower_proc for h in ("htop", "btop", "top", "nmon", "glances")):
+            if not force and elapsed < 180.0:
+                return {
+                    "status": "high_churn_suppressed",
+                    "reason": f"Flicker suppression active for monitor window '{title}'",
+                    "timestamp": now.isoformat(),
+                }
+
+        if not force and self.last_frame_time is not None and elapsed < min_interval:
+            return {
+                "status": "cooldown_throttled",
+                "reason": f"Minimum capture interval ({min_interval}s) not yet reached ({round(elapsed, 1)}s elapsed).",
+                "timestamp": now.isoformat(),
+            }
+
+        # 3. Grab Image
         img = image if image is not None else capture_screen_image()
         if img is None:
             return {
@@ -245,7 +274,7 @@ class ScreenMemoryEngine:
                 "timestamp": now.isoformat(),
             }
 
-        # 3. Delta Gating
+        # 4. Delta Gating
         delta = compute_frame_delta(self.last_frame, img)
         if not force and self.last_frame is not None and delta < self.min_delta_threshold:
             return {
@@ -255,7 +284,7 @@ class ScreenMemoryEngine:
                 "timestamp": now.isoformat(),
             }
 
-        # 4. Save Compressed WebP Keyframe
+        # 5. Save Compressed WebP Keyframe (<15ms, lightweight)
         date_str = now.strftime("%Y-%m-%d")
         day_dir = self.base_dir / date_str
         day_dir.mkdir(parents=True, exist_ok=True)
@@ -269,22 +298,38 @@ class ScreenMemoryEngine:
             # Save as optimized WebP
             img.save(frame_path, "WEBP", quality=75, method=4)
             file_size_kb = round(frame_path.stat().st_size / 1024.0, 1)
-        except Exception as e:
+        except Exception:
             # Fallback to PNG if WEBP encoder unavailable
             frame_path = frame_path.with_suffix(".png")
             img.save(frame_path, "PNG", optimize=True)
             file_size_kb = round(frame_path.stat().st_size / 1024.0, 1)
 
-        # 5. Extract OCR / Text (Indra OCR pure-CPU or mock fallback)
-        ocr_text = mock_ocr_text
-        if ocr_text is None and self.enable_ocr and img is not None:
-            ocr_text = self._extract_ocr(img)
-
-        ocr_text = ocr_text or ""
-        sanitized_text = ""
-        if ocr_text:
-            # Sanitize via Tier 1 regex shield
-            sanitized_text = self._sanitize_text(ocr_text)
+        # 6. Decoupled Asynchronous OCR via JobQueue (Never blocks foreground)
+        ocr_status = "disabled"
+        if mock_ocr_text is not None:
+            ocr_text = self._sanitize_text(mock_ocr_text)
+            ocr_status = "completed"
+        elif self.enable_ocr and img is not None:
+            ocr_text = ""
+            ocr_status = "queued"
+            try:
+                from cephalo.services.job_queue import JobQueue
+                queue = JobQueue()
+                queue.enqueue(
+                    "ocr_screen_keyframe",
+                    {
+                        "frame_id": f"frame-{now.strftime('%Y%m%d-%H%M%S')}-{frame_hash}",
+                        "image_path": str(frame_path),
+                        "date_str": date_str,
+                        "title": title,
+                        "process": proc,
+                    },
+                    priority=4,
+                )
+            except Exception as q_err:
+                logger.debug(f"Could not enqueue OCR job: {q_err}")
+        else:
+            ocr_text = ""
 
         frame_record = {
             "id": f"frame-{now.strftime('%Y%m%d-%H%M%S')}-{frame_hash}",
@@ -296,10 +341,11 @@ class ScreenMemoryEngine:
             "size_kb": file_size_kb,
             "window_title": title,
             "process_name": proc,
-            "ocr_text": sanitized_text,
+            "ocr_text": ocr_text,
+            "ocr_status": ocr_status,
         }
 
-        # 6. Append to index
+        # 7. Append to index
         with open(self.index_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(frame_record, ensure_ascii=False) + "\n")
 
@@ -315,6 +361,7 @@ class ScreenMemoryEngine:
             "size_kb": file_size_kb,
             "window_title": title,
             "process_name": proc,
+            "ocr_status": ocr_status,
             "timestamp": now.isoformat(),
         }
 

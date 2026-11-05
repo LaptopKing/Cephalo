@@ -2,7 +2,7 @@
 
 ## 1. Cephalo Memory Environment
 This codebase is part of the user's sovereign Second Brain, Cephalo:
-`C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain`
+`/home/strider/Cephalo`
 
 ## 2. Coding Standards
 - Follow anti-slop software craftsmanship: no hallucinated wrappers, zero dead code, functions fit on 1-2 screens.

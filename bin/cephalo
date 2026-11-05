@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Cephalo - Sovereign Local Memory & Cognitive Coprocessor CLI Runner
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REAL_BIN="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$REAL_BIN")/.." && pwd)"
 PYTHON_CMD="python3"
 if [ -f "$SCRIPT_DIR/.venv/bin/python" ]; then
     PYTHON_CMD="$SCRIPT_DIR/.venv/bin/python"

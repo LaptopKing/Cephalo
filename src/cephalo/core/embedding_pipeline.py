@@ -354,9 +354,24 @@ class FastEmbedEmbedder(BaseEmbedder):
         # Zero-Noise GPU Provider Configuration with Automated CPU Fallback
         providers = get_safe_onnx_providers()
 
+        # Power & Thermal Safety: Determine safe threads to prevent battery spikes/shutdown
+        power_threads = 1
+        try:
+            import psutil
+            b = psutil.sensors_battery()
+            if b and b.power_plugged:
+                power_threads = min(2, os.cpu_count() or 2)
+            else:
+                power_threads = 1
+        except Exception:
+            power_threads = 1
+
+        os.environ["OMP_NUM_THREADS"] = str(power_threads)
+        os.environ["MKL_NUM_THREADS"] = str(power_threads)
+
         try:
             from fastembed import TextEmbedding
-            self._engine = TextEmbedding(model_name=self._model_name, providers=providers)
+            self._engine = TextEmbedding(model_name=self._model_name, providers=providers, threads=power_threads)
         except ImportError as e:
             raise ImportError(
                 "FastEmbed is not installed. Please install it via: pip install fastembed"
@@ -897,12 +912,36 @@ class EmbeddingPipeline:
             self.sanitizer.sanitize(item.get("content", "")) for item in to_process
         ]
 
-        # 2. Batch embed
+        # 2. Batch embed with hardware & battery throttling
         logger.info(
             f"Generating embeddings via [{self.embedder.mode.upper()}] "
             f"model='{self.embedder.model_name}' dim={self.embedder.dimension}..."
         )
-        vectors = self.embedder.embed_texts(sanitized_texts)
+
+        try:
+            from cephalo.services.subagent_governor import SubagentGovernor
+            res = SubagentGovernor().inspect_resources()
+            on_battery = res.get("on_battery", False)
+            bat_pct = res.get("battery_percent")
+            if on_battery and bat_pct is not None and bat_pct < 20.0:
+                logger.warning(
+                    f"Vector sync deferred: battery critically low ({bat_pct:.1f}% on battery). "
+                    "Pausing ONNX batch embedding to prevent laptop emergency power-off."
+                )
+                return 0, len(existing_ids)
+            chunk_size = 5 if on_battery else 25
+            cooldown_sleep = 0.5 if on_battery else 0.05
+        except Exception:
+            chunk_size = 5
+            cooldown_sleep = 0.3
+
+        vectors: List[List[float]] = []
+        for i in range(0, len(sanitized_texts), chunk_size):
+            chunk = sanitized_texts[i : i + chunk_size]
+            chunk_vecs = self.embedder.embed_texts(chunk)
+            vectors.extend(chunk_vecs)
+            if cooldown_sleep > 0 and (i + chunk_size < len(sanitized_texts)):
+                time.sleep(cooldown_sleep)
 
         # 3. Assemble LanceDB records
         records = []

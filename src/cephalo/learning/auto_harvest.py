@@ -224,7 +224,9 @@ def query_relevant_memory(query_text: str) -> Optional[Tuple[str, str, float]]:
 
         from cephalo.core.embedding_pipeline import get_safe_onnx_providers
         safe_providers = get_safe_onnx_providers()
-        embedder = TextEmbedding(model_name="Qwen/Qwen3-Embedding-0.6B-Q", providers=safe_providers)
+        os.environ["OMP_NUM_THREADS"] = "1"
+        os.environ["MKL_NUM_THREADS"] = "1"
+        embedder = TextEmbedding(model_name="Qwen/Qwen3-Embedding-0.6B-Q", providers=safe_providers, threads=1)
         vec = list(embedder.embed([query_text]))[0]
 
         where_cond = "(is_deprecated IS NULL OR is_deprecated = false)" if "is_deprecated" in tbl.schema.names else None
@@ -298,7 +300,9 @@ class CompactionCarryover:
         lines = [
             "🧠 [Cephalo Ground-Truth Memory Carryover | Active Post-Compaction]",
             "<!-- Context compaction detected. Active constraints and core invariants re-anchored below. Follow strictly. -->",
+            "- Cephalo-First Front Door (Step 0): Query Cephalo first (`cephalo search \"<query>\" --json` / `cephalo_search`) for ANY investigation, question, concept, or feature. NEVER use grep/rg as first choice.",
             "- Core Invariant: ALWAYS validate ground truth before recommending. Never extrapolate vendor shipping, pricing, or compatibility without verified facts.",
+            "- Subagent-First & Governor Invariant: Deploy subagents by default for research/feature tasks. Checkpoint and restore via Cephalo (`cephalo_task_checkpoint`/`cephalo_task_resume`). When on battery, limit concurrency to 1 to protect power.",
             "- Privacy Invariant: Zero-leak privacy; all secrets scrubbed before LanceDB storage.",
         ]
 
@@ -355,13 +359,30 @@ def handle_session_start(input_data: Dict[str, Any]) -> None:
     if PROFILE_FILE.exists():
         profile_summary = " User profile active with cinema preferences (TCL 65T8B TV), hardware specs, and project specialties."
 
+    # Inspect live resource governor
+    gov_info = ""
+    try:
+        from cephalo.services.subagent_governor import SubagentGovernor
+        gov = SubagentGovernor()
+        res = gov.inspect_resources()
+        power_src = "Battery" if res["on_battery"] else "AC Power"
+        batt_str = f" ({res['battery_percent']}%)" if res.get("battery_percent") is not None else ""
+        gov_info = (
+            f" [Hardware Governor: {power_src}{batt_str} | Safe Concurrency: {res['safe_concurrency']} subagent(s) max | Mode: {res['mode']}]."
+        )
+    except Exception:
+        pass
+
     welcome_text = (
-        "🧠 Cephalo Second Brain is active and mounted at "
-        r"C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain."
-        + profile_summary +
-        " Mandatory Core Invariant: ALWAYS validate ground truth before recommending. "
-        "Never extrapolate or assume vendor shipping, pricing, or compatibility without verified facts. "
-        "Ground decisions in USER_PROFILE.md and use `cephalo search` / `cephalo specialty` commands."
+        f"🧠 Cephalo Second Brain is active and mounted at {ROOT_DIR}."
+        + profile_summary
+        + gov_info +
+        " Mandatory Core Invariants: "
+        "1) Cephalo-First Front Door (Step 0): Query Cephalo first (`cephalo search \"<query>\" --json` / `cephalo_search`) for ANY investigation, question, concept, or feature. NEVER use grep/rg as first choice. "
+        "2) ALWAYS validate ground truth before recommending. Never extrapolate vendor shipping or pricing without verified facts. "
+        "3) Subagent-First Execution: Deploy specialized subagents by default for tasks involving multi-step research, codebase audits, or feature development. "
+        "4) Cephalo Checkpoint & Zero-Lost-Work Resume: Subagent tasks MUST be registered and checkpointed with Cephalo (`cephalo_task_checkpoint`). If a subagent was interrupted by a crash/reboot, use `cephalo_task_resume` to resume directly from the last completed step index. "
+        "5) Power Governor: Strictly respect safe concurrency limits (1 subagent max on battery) to prevent thermal overload and power shutdown."
     )
 
     response = {
@@ -476,6 +497,14 @@ def handle_stop_hook(input_data: Dict[str, Any]) -> None:
     except Exception:
         pass
 
+    # Enqueue vector sync into Cephalo's serialized work queue (non-blocking, zero power spike)
+    try:
+        from cephalo.services.job_queue import JobQueue
+        queue = JobQueue()
+        queue.enqueue("sync_lancedb", {"jsonl_path": str(PROMPTS_FILE)}, priority=8)
+    except Exception:
+        pass
+
     print(json.dumps({}))
 
 
@@ -495,8 +524,13 @@ def run_standalone_scan(transcript_path: Optional[str] = None) -> None:
         print(f"Scanned {tpath.name}: {count} user prompts harvested into Cephalo.")
         return
 
-    brain_dir = Path(r"C:\Users\strider-desktop\.gemini\antigravity\brain")
-    if not brain_dir.exists():
+    candidates = [
+        Path.home() / ".gemini" / "antigravity-cli" / "brain",
+        Path.home() / ".gemini" / "antigravity" / "brain",
+        Path(r"C:\Users\strider-desktop\.gemini\antigravity\brain"),
+    ]
+    brain_dir = next((c for c in candidates if c.exists()), None)
+    if not brain_dir:
         print("Brain directory not found.")
         return
 

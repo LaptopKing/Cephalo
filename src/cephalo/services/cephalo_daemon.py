@@ -141,10 +141,14 @@ class CephaloDaemon:
         return cycle_result
 
     def run_foreground(self) -> None:
-        """Runs the daemon loop in the foreground."""
+        """Runs the daemon loop in the foreground with serialized background work queue."""
         self.running = True
         self._write_pid()
         logger.info(f"Cephalo Always-On Daemon started (PID {os.getpid()}, Interval: {self.interval_seconds}s)")
+
+        from cephalo.services.job_queue import JobQueue, QueueWorker
+        self.queue = JobQueue()
+        self.worker = QueueWorker(self.queue)
 
         # Start background quick-capture webhook server
         try:
@@ -173,18 +177,38 @@ class CephaloDaemon:
         except Exception:
             pass
 
+        last_cycle_time = 0.0
+
         try:
             while self.running:
-                try:
-                    self.execute_cycle()
-                except Exception as cycle_err:
-                    logger.error(f"Error in execution cycle: {cycle_err}", exc_info=True)
+                now = time.time()
 
-                # Sleep in short increments for responsive interrupt handling
-                for _ in range(self.interval_seconds):
-                    if not self.running:
-                        break
-                    time.sleep(1)
+                # 1. First priority: Drain pending heavy jobs in queue sequentially
+                had_work = False
+                try:
+                    had_work = self.worker.process_one()
+                except Exception as w_err:
+                    logger.error(f"Queue worker exception: {w_err}", exc_info=True)
+
+                if had_work:
+                    # Give CPU and thermals a brief pause between queue tasks
+                    time.sleep(0.5)
+                    continue
+
+                # 2. If queue is clear and interval elapsed, enqueue periodic tasks
+                if (now - last_cycle_time) >= self.interval_seconds:
+                    last_cycle_time = now
+                    try:
+                        # Enqueue periodic maintenance tasks with priority order
+                        self.queue.enqueue("screen_capture", priority=4)
+                        self.queue.enqueue("transcript_harvest", priority=3)
+                        self.queue.enqueue("continuous_learn", priority=2)
+                        self._update_status({"queue": self.queue.get_status()})
+                    except Exception as cycle_err:
+                        logger.error(f"Error enqueueing periodic cycle: {cycle_err}")
+
+                # Sleep briefly when idle
+                time.sleep(1.5)
         except Exception as loop_err:
             logger.error(f"Daemon fatal loop crash: {loop_err}", exc_info=True)
         finally:
@@ -340,50 +364,164 @@ def stop_daemon() -> bool:
         return False
 
 
-def install_windows_task() -> bool:
-    """Registers a persistent Windows Scheduled Task running on user login."""
-    if sys.platform != "win32":
-        print("[-] Task Scheduler registration is only available on Windows.")
-        return False
-
-    task_name = "CephaloContinuousDaemon"
-    script_path = SCRIPT_DIR / "cephalo_daemon.py"
+def install_autostart() -> bool:
+    """Registers Cephalo daemon to start automatically on user login/boot across Linux, macOS, and Windows."""
+    script_path = Path(__file__).resolve()
     python_exe = sys.executable
 
-    # Command: run pythonw or python minimized
-    action_cmd = f'"{python_exe}" "{script_path}" run --interval 90'
-    create_cmd = [
-        "schtasks",
-        "/Create",
-        "/TN", task_name,
-        "/TR", action_cmd,
-        "/SC", "ONLOGON",
-        "/F",  # Overwrite if exists
-    ]
+    # 1. Windows: Task Scheduler ONLOGON
+    if sys.platform == "win32":
+        task_name = "CephaloContinuousDaemon"
+        action_cmd = f'"{python_exe}" "{script_path}" run --interval 90'
+        create_cmd = [
+            "schtasks",
+            "/Create",
+            "/TN", task_name,
+            "/TR", action_cmd,
+            "/SC", "ONLOGON",
+            "/F",
+        ]
+        print(f"[*] Registering Windows Scheduled Task '{task_name}'...")
+        res = subprocess.run(create_cmd, capture_output=True, text=True, creationflags=NO_WINDOW_FLAG)
+        if res.returncode == 0:
+            print(f"[+] Scheduled Task '{task_name}' installed! Cephalo daemon will start automatically on login.")
+            return True
+        else:
+            print(f"[-] Failed to register Windows task: {res.stderr or res.stdout}")
+            return False
 
-    print(f"[*] Registering Windows Scheduled Task '{task_name}'...")
-    res = subprocess.run(create_cmd, capture_output=True, text=True, creationflags=NO_WINDOW_FLAG)
-    if res.returncode == 0:
-        print(f"[+] Scheduled Task '{task_name}' installed! Cephalo will now run automatically on login.")
-        return True
+    # 2. macOS: LaunchAgents plist
+    elif sys.platform == "darwin":
+        launch_agents_dir = Path.home() / "Library" / "LaunchAgents"
+        launch_agents_dir.mkdir(parents=True, exist_ok=True)
+        plist_path = launch_agents_dir / "ai.cephalo.daemon.plist"
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.cephalo.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_exe}</string>
+        <string>{script_path}</string>
+        <string>run</string>
+        <string>--interval</string>
+        <string>90</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardErrorPath</key>
+    <string>{DATA_DIR}/daemon.err</string>
+    <key>StandardOutPath</key>
+    <string>{DATA_DIR}/daemon.log</string>
+</dict>
+</plist>
+"""
+        try:
+            plist_path.write_text(plist_content, encoding="utf-8")
+            subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True)
+            subprocess.run(["launchctl", "load", str(plist_path)], check=True)
+            print(f"[+] macOS LaunchAgent registered at {plist_path}. Daemon will start automatically on boot.")
+            return True
+        except Exception as e:
+            print(f"[-] Failed to configure macOS LaunchAgent: {e}")
+            return False
+
+    # 3. Linux: XDG Desktop Autostart & systemd user service
     else:
-        print(f"[-] Failed to register task: {res.stderr or res.stdout}")
-        return False
+        success = False
+        # A) XDG Desktop Autostart (guarantees DISPLAY/Wayland access for screen capture)
+        autostart_dir = Path.home() / ".config" / "autostart"
+        autostart_dir.mkdir(parents=True, exist_ok=True)
+        desktop_file = autostart_dir / "cephalo-daemon.desktop"
+        desktop_content = f"""[Desktop Entry]
+Type=Application
+Name=Cephalo Background Daemon
+Comment=Always-on screen memory, perceptual delta capture, and continuous learning
+Exec={python_exe} {script_path} run --interval 90
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+StartupNotify=false
+Terminal=false
+"""
+        try:
+            desktop_file.write_text(desktop_content, encoding="utf-8")
+            desktop_file.chmod(0o755)
+            print(f"[+] Linux XDG Autostart installed at {desktop_file}")
+            success = True
+        except Exception as e:
+            print(f"[-] Failed to write XDG autostart file: {e}")
+
+        # B) systemd user service (for background persistence across logins)
+        systemd_user_dir = Path.home() / ".config" / "systemd" / "user"
+        systemd_user_dir.mkdir(parents=True, exist_ok=True)
+        service_file = systemd_user_dir / "cephalo-daemon.service"
+        service_content = f"""[Unit]
+Description=Cephalo Always-On Cognitive & Screen Memory Daemon
+After=graphical-session.target network.target
+
+[Service]
+Type=simple
+Environment="PYTHONPATH={ROOT_DIR / 'src'}"
+Environment="DISPLAY=:0"
+ExecStart={python_exe} {script_path} run --interval 90
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+"""
+        try:
+            service_file.write_text(service_content, encoding="utf-8")
+            subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
+            subprocess.run(["systemctl", "--user", "enable", "cephalo-daemon.service"], capture_output=True)
+            print(f"[+] Linux systemd user service installed and enabled ({service_file})")
+            success = True
+        except Exception as e:
+            print(f"[*] systemd registration skipped/failed: {e}")
+
+        return success
 
 
-def uninstall_windows_task() -> bool:
-    """Unregisters the Windows Scheduled Task."""
-    if sys.platform != "win32":
+def uninstall_autostart() -> bool:
+    """Removes Cephalo autostart registration across Linux, macOS, and Windows."""
+    if sys.platform == "win32":
+        task_name = "CephaloContinuousDaemon"
+        print(f"[*] Removing Windows Scheduled Task '{task_name}'...")
+        res = subprocess.run(["schtasks", "/Delete", "/TN", task_name, "/F"], capture_output=True, text=True, creationflags=NO_WINDOW_FLAG)
+        return res.returncode == 0
+    elif sys.platform == "darwin":
+        plist_path = Path.home() / "Library" / "LaunchAgents" / "ai.cephalo.daemon.plist"
+        if plist_path.exists():
+            subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True)
+            plist_path.unlink()
+            print("[+] macOS LaunchAgent removed.")
+            return True
         return False
-    task_name = "CephaloContinuousDaemon"
-    print(f"[*] Removing Windows Scheduled Task '{task_name}'...")
-    res = subprocess.run(["schtasks", "/Delete", "/TN", task_name, "/F"], capture_output=True, text=True, creationflags=NO_WINDOW_FLAG)
-    if res.returncode == 0:
-        print(f"[+] Scheduled Task '{task_name}' removed.")
-        return True
     else:
-        print(f"[-] Task was not found or could not be removed.")
-        return False
+        # Linux
+        desktop_file = Path.home() / ".config" / "autostart" / "cephalo-daemon.desktop"
+        if desktop_file.exists():
+            desktop_file.unlink()
+            print("[+] Linux XDG autostart desktop entry removed.")
+        try:
+            subprocess.run(["systemctl", "--user", "disable", "--now", "cephalo-daemon.service"], capture_output=True)
+            service_file = Path.home() / ".config" / "systemd" / "user" / "cephalo-daemon.service"
+            if service_file.exists():
+                service_file.unlink()
+            subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True)
+            print("[+] Linux systemd user service removed.")
+        except Exception:
+            pass
+        return True
+
+
+install_windows_task = install_autostart
+uninstall_windows_task = uninstall_autostart
 
 
 # =============================================================================

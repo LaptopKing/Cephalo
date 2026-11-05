@@ -11,7 +11,7 @@ description: >-
 
 Cephalo is the user's sovereign, local-first Second Brain and permanent cognitive coprocessor. It operates autonomously across all sessions, conversations, and agent harnesses (Antigravity, Claude Code, Cursor, Codex).
 
-Base directory: `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain`
+Base directory: `/home/strider/Cephalo`
 
 ---
 
@@ -19,7 +19,7 @@ Base directory: `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-bra
 
 Before making assumptions or answering questions concerning past decisions, preferences, device configurations, or domain-specific workflows:
 1. Ground your reasoning in Cephalo:
-   - Check the profile blueprint: `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\USER_PROFILE.md`
+   - Check the profile blueprint: `/home/strider/Cephalo\USER_PROFILE.md`
    - Run hybrid vector search: `cephalo search "<query>" --json`
 2. Follow the user's communication style: direct, technical, pragmatic, clean markdown, no fluff.
 3. Keep the user's hardware constraints in mind:
@@ -41,7 +41,7 @@ Before making assumptions or answering questions concerning past decisions, pref
 cephalo record "<Clear, factual preference or decision>" --category "<category>" --source "agent"
 ```
 If it affects identity, devices, or broad domain rules, update:
-`C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\USER_PROFILE.md`
+`/home/strider/Cephalo\USER_PROFILE.md`
 
 ---
 
@@ -57,7 +57,7 @@ When working on a new project or domain:
   ```bash
   cephalo specialty create "<specialty-name>" --project "<project-name>" --fundamentals "<core domain knowledge>" --takeaways "rule 1" "rule 2"
   ```
-Specialties are saved under `C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain\specialties\<project>\<specialty>\` and automatically indexed into LanceDB.
+Specialties are saved under `/home/strider/Cephalo\specialties\<project>\<specialty>\` and automatically indexed into LanceDB.
 
 > [!CAUTION]
 > Specialty deletion requires explicit human user confirmation. Never delete without `--confirm`.
