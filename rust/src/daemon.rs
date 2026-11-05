@@ -61,6 +61,12 @@ impl DaemonSupervisor {
         // Reset interrupted jobs from prior reboots
         let _ = queue.reset_all_running_jobs();
 
+        // Start native webhook ingress gateway in background tokio task
+        let webhook_data_dir = self.data_dir.clone();
+        tokio::spawn(async move {
+            let _ = crate::webhook::start_webhook_server(webhook_data_dir, 7434, None).await;
+        });
+
         println!(
             "[+] Cephalo Native Rust Daemon started (PID {}, Interval: {}s)",
             std::process::id(),

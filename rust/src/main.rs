@@ -12,6 +12,9 @@ mod screen;
 mod specialties;
 mod storage;
 mod task_ledger;
+mod web;
+mod webhook;
+mod wiki;
 
 use clap::{Args, Parser, Subcommand};
 use governor::ResourceGovernor;
@@ -91,7 +94,7 @@ enum Commands {
     Web(PassthroughArgs),
 
     /// Clean web text & markdown extraction
-    Fetch(PassthroughArgs),
+    Fetch(FetchArgs),
 
     /// Deep autonomous research synthesis
     Research(PassthroughArgs),
@@ -106,7 +109,7 @@ enum Commands {
     Reconcile(PassthroughArgs),
 
     /// Local sovereign DeepWiki knowledge engine
-    Wiki(PassthroughArgs),
+    Wiki(WikiArgs),
 
     /// Cognitive execution patterns and reflexes
     Pattern(PassthroughArgs),
@@ -121,7 +124,7 @@ enum Commands {
     Email(PassthroughArgs),
 
     /// Multi-channel quick capture HTTP webhook gateway
-    Webhook(PassthroughArgs),
+    Webhook(WebhookArgs),
 
     /// Start native stdio Model Context Protocol (MCP) server for AI agents
     Mcp,
@@ -426,6 +429,79 @@ struct DefArgs {
 struct SyncArgs {
     #[arg(long)]
     json: bool,
+}
+
+#[derive(Args, Debug)]
+struct FetchArgs {
+    /// Target webpage or YouTube URL
+    url: String,
+
+    /// Output raw JSON format
+    #[arg(long)]
+    json: bool,
+
+    /// Pass through additional CLI arguments
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    extra: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+struct WikiArgs {
+    #[command(subcommand)]
+    action: Option<WikiSubcommands>,
+
+    /// Port to serve on (default: 7433)
+    #[arg(short, long, default_value_t = 7433)]
+    port: u16,
+}
+
+#[derive(Subcommand, Debug)]
+enum WikiSubcommands {
+    /// Serve generated DeepWiki on local HTTP server
+    Serve {
+        #[arg(short, long, default_value_t = 7433)]
+        port: u16,
+    },
+    /// Generate offline Markdown documentation
+    Generate,
+}
+
+#[derive(Args, Debug)]
+struct WebhookArgs {
+    #[command(subcommand)]
+    action: Option<WebhookSubcommands>,
+
+    /// Webhook port (default: 7434)
+    #[arg(short, long, default_value_t = 7434)]
+    port: u16,
+
+    /// Optional Bearer authentication token
+    #[arg(long)]
+    token: Option<String>,
+}
+
+#[derive(Subcommand, Debug)]
+enum WebhookSubcommands {
+    /// Start foreground HTTP webhook receiver
+    Serve {
+        #[arg(short, long, default_value_t = 7434)]
+        port: u16,
+        #[arg(long)]
+        token: Option<String>,
+    },
+    /// Check webhook receiver status
+    Status {
+        #[arg(short, long, default_value_t = 7434)]
+        port: u16,
+    },
+    /// Send a quick memory directly to the webhook receiver
+    Send {
+        text: String,
+        #[arg(short, long, default_value = "quick_note")]
+        category: String,
+        #[arg(short, long, default_value_t = 7434)]
+        port: u16,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -1067,17 +1143,84 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         Some(Commands::Learn(args)) => run_python_cli(&root_dir, "learn", &args.args)?,
         Some(Commands::Web(args)) => run_python_cli(&root_dir, "web", &args.args)?,
-        Some(Commands::Fetch(args)) => run_python_cli(&root_dir, "fetch", &args.args)?,
+        Some(Commands::Fetch(args)) => {
+            if args.extra.iter().any(|arg| arg == "--dynamic" || arg == "--youtube" || arg == "-y" || arg == "--record") {
+                let mut full_args = vec![args.url.clone()];
+                full_args.extend(args.extra.clone());
+                run_python_cli(&root_dir, "fetch", &full_args)?;
+            } else {
+                let engine = web::WebEngine::new();
+                let res = engine.fetch(&args.url).await?;
+                if args.json {
+                    println!("{}", serde_json::to_string_pretty(&res)?);
+                } else {
+                    println!("\n🌐 Cephalo Web Fetch: {} (Status: {}, {}ms)", res.url, res.status, res.elapsed_ms);
+                    println!("Title: {}", res.title);
+                    println!("{}", "=".repeat(65));
+                    println!("{}", res.content);
+                }
+            }
+        }
         Some(Commands::Research(args)) => run_python_cli(&root_dir, "research", &args.args)?,
         Some(Commands::Migrate(args)) => run_python_cli(&root_dir, "migrate", &args.args)?,
         Some(Commands::Ocr(args)) => run_python_cli(&root_dir, "ocr", &args.args)?,
         Some(Commands::Reconcile(args)) => run_python_cli(&root_dir, "reconcile", &args.args)?,
-        Some(Commands::Wiki(args)) => run_python_cli(&root_dir, "wiki", &args.args)?,
+        Some(Commands::Wiki(args)) => {
+            let port = match &args.action {
+                Some(WikiSubcommands::Serve { port }) => *port,
+                Some(WikiSubcommands::Generate) => {
+                    run_python_cli(&root_dir, "wiki", &["generate".to_string()])?;
+                    return Ok(());
+                }
+                None => args.port,
+            };
+            wiki::start_wiki_server(root_dir.clone(), port).await?;
+        }
         Some(Commands::Pattern(args)) => run_python_cli(&root_dir, "pattern", &args.args)?,
         Some(Commands::Context(args)) => run_python_cli(&root_dir, "context", &args.args)?,
         Some(Commands::Youtube(args)) => run_python_cli(&root_dir, "youtube", &args.args)?,
         Some(Commands::Email(args)) => run_python_cli(&root_dir, "email", &args.args)?,
-        Some(Commands::Webhook(args)) => run_python_cli(&root_dir, "webhook", &args.args)?,
+        Some(Commands::Webhook(args)) => {
+            match &args.action {
+                Some(WebhookSubcommands::Serve { port, token }) => {
+                    webhook::start_webhook_server(data_dir.clone(), *port, token.clone()).await?;
+                }
+                Some(WebhookSubcommands::Status { port }) => {
+                    let client = reqwest::Client::new();
+                    let url = format!("http://127.0.0.1:{}/status", port);
+                    match client.get(&url).send().await {
+                        Ok(resp) => {
+                            let body = resp.text().await.unwrap_or_default();
+                            println!("[+] Webhook Gateway Active on port {}:\n{}", port, body);
+                        }
+                        Err(_) => {
+                            println!("[-] Webhook Gateway is not reachable at http://127.0.0.1:{}", port);
+                        }
+                    }
+                }
+                Some(WebhookSubcommands::Send { text, category, port }) => {
+                    let client = reqwest::Client::new();
+                    let url = format!("http://127.0.0.1:{}/ingest", port);
+                    let payload = serde_json::json!({
+                        "text": text,
+                        "category": category,
+                        "source": "cli_send"
+                    });
+                    match client.post(&url).json(&payload).send().await {
+                        Ok(resp) => {
+                            let body = resp.text().await.unwrap_or_default();
+                            println!("[+] Sent memory to Webhook on port {}:\n{}", port, body);
+                        }
+                        Err(e) => {
+                            eprintln!("[-] Failed to deliver memory to webhook: {}", e);
+                        }
+                    }
+                }
+                None => {
+                    webhook::start_webhook_server(data_dir.clone(), args.port, args.token.clone()).await?;
+                }
+            }
+        }
 
         Some(Commands::Mcp) => {
             let mut server = mcp::McpServer::new(&storage, &specialties, &profile, &ledger, &queue, &mut governor, &root_dir);
