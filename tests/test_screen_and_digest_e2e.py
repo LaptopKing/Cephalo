@@ -179,6 +179,48 @@ class TestScreenMemoryDeltaE2E(unittest.TestCase):
         res2 = throttled_engine.capture_step(image=img_b, window_context=ctx)
         self.assertEqual(res2["status"], "cooldown_throttled")
 
+    def test_smart_lens_focus_shift_dominance(self):
+        """Focus-shift dominance: switching active window bypasses cooldown and captures immediately."""
+        engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05, min_interval_seconds=60.0)
+        img_a = self._create_mock_image((0, 0, 0), text="Code Window")
+        img_b = self._create_mock_image((128, 128, 128), text="Browser Window")
+
+        ctx_code = {"title": "main.rs — Cephalo", "process": "Code.exe", "window_id": "1001", "platform": "linux"}
+        ctx_browser = {"title": "Cephalo Wiki — Chrome", "process": "chrome.exe", "window_id": "2002", "platform": "linux"}
+
+        # 1. First window capture
+        res1 = engine.capture_step(image=img_a, window_context=ctx_code)
+        self.assertEqual(res1["status"], "captured")
+
+        # 2. Focus shift to browser (even within 60s cooldown, must capture immediately)
+        res2 = engine.capture_step(image=img_b, window_context=ctx_browser)
+        self.assertEqual(res2["status"], "captured")
+        self.assertTrue(res2["focus_shift"])
+        self.assertEqual(res2["stream_flips"], 0)
+
+    def test_smart_lens_streaming_noise_suppression(self):
+        """Streaming noise suppressor: repeated visual churn in the same window throttles OCR floods."""
+        engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05, min_interval_seconds=0.0)
+        ctx = {"title": "Terminal — Fast Streaming Logs", "process": "alacritty", "window_id": "3003", "platform": "linux"}
+
+        # Flip 0: Initial capture
+        res0 = engine.capture_step(image=self._create_mock_image((10, 10, 10)), window_context=ctx)
+        self.assertEqual(res0["status"], "captured")
+
+        # Flip 1: Streaming token / log line 1 (delta ~0.20 > 0.05)
+        res1 = engine.capture_step(image=self._create_mock_image((60, 60, 60)), window_context=ctx)
+        self.assertEqual(res1["status"], "captured")
+
+        # Flip 2: Streaming token / log line 2 (delta ~0.24 > 0.05)
+        res2 = engine.capture_step(image=self._create_mock_image((120, 120, 120)), window_context=ctx)
+        self.assertEqual(res2["status"], "captured")
+
+        # Flip 3: Rapid churn threshold reached (flip >= 3) -> enters streaming_suppressed mode!
+        res3 = engine.capture_step(image=self._create_mock_image((180, 180, 180)), window_context=ctx)
+        self.assertEqual(res3["status"], "streaming_suppressed")
+        self.assertEqual(res3["stream_flips"], 3)
+        self.assertFalse(res3["focus_shift"])
+
     def test_safeguards_shield_abort(self):
         img = self._create_mock_image((10, 10, 10))
         # Active window is a password manager

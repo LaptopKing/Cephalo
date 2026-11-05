@@ -91,16 +91,49 @@ def get_active_window_context() -> Dict[str, str]:
 
         elif sys.platform.startswith("linux"):
             # Linux: try xdotool
-            proc_title = subprocess.run(
-                ["xdotool", "getactivewindow", "getwindowname"],
+            proc_id = subprocess.run(
+                ["xdotool", "getactivewindow"],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="ignore",
                 timeout=2,
             )
-            if proc_title.returncode == 0:
-                context["title"] = proc_title.stdout.strip()
+            if proc_id.returncode == 0 and proc_id.stdout.strip():
+                win_id = proc_id.stdout.strip()
+                context["window_id"] = win_id
+                proc_name = subprocess.run(
+                    ["xdotool", "getwindowname", win_id],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="ignore",
+                    timeout=2,
+                )
+                if proc_name.returncode == 0:
+                    context["title"] = proc_name.stdout.strip()
+                proc_class = subprocess.run(
+                    ["xdotool", "getwindowclassname", win_id],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="ignore",
+                    timeout=2,
+                )
+                if proc_class.returncode == 0:
+                    context["process"] = proc_class.stdout.strip()
+
+            if not context["title"]:
+                proc_title = subprocess.run(
+                    ["xdotool", "getactivewindow", "getwindowname"],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="ignore",
+                    timeout=2,
+                )
+                if proc_title.returncode == 0:
+                    context["title"] = proc_title.stdout.strip()
 
     except Exception as e:
         logger.debug("Active window detection bypassed: %s", e)
@@ -183,6 +216,9 @@ class ScreenMemoryEngine:
         self._ocr_conv: Optional[Any] = None
         self.last_frame: Optional[Any] = None
         self.last_frame_time: Optional[datetime.datetime] = None
+        self.last_window_key: str = ""
+        self.consecutive_stream_flips: int = 0
+        self.is_suppressed: bool = False
 
     def _extract_ocr(self, img: Any) -> str:
         """
@@ -247,18 +283,26 @@ class ScreenMemoryEngine:
                 "timestamp": now.isoformat(),
             }
 
-        # 3. Delta Gating
+        # 3. Smart Lens Focus-Shift & Delta Gating
+        win_id = ctx.get("window_id", "")
+        current_window_key = f"{proc}:{title}:{win_id}"
+        is_focus_shift = bool(self.last_window_key and current_window_key != self.last_window_key)
+
         delta = compute_frame_delta(self.last_frame, img)
         if not force and self.last_frame is not None and delta < self.min_delta_threshold:
+            if self.is_suppressed:
+                self.is_suppressed = False
+                self.consecutive_stream_flips = 0
             return {
                 "status": "skipped_no_change",
                 "delta": round(delta, 4),
                 "threshold": self.min_delta_threshold,
                 "timestamp": now.isoformat(),
+                "focus_shift": is_focus_shift,
+                "stream_flips": self.consecutive_stream_flips,
             }
 
-        # 4. Cooldown & Flicker Debounce Protection (Only evaluated when screen actually changes)
-        # Prevents fast-scrolling AI agent terminal output or htop graphs from flooding CPU with OCR
+        # 4. Smart Lens Focus-Shift Dominance vs. Streaming Noise Suppressor
         if self.min_interval_seconds is not None:
             min_interval = self.min_interval_seconds
         else:
@@ -271,6 +315,25 @@ class ScreenMemoryEngine:
 
         elapsed = (now - self.last_frame_time).total_seconds() if self.last_frame_time else 999.0
 
+        if not self.last_window_key or is_focus_shift:
+            # Initial frame or human focus shifted (user switched active window/application)
+            # Focus-shift dominance: reset churn flips and suppression immediately
+            self.consecutive_stream_flips = 0
+            self.is_suppressed = False
+        else:
+            # Screen changed in the same window
+            self.consecutive_stream_flips += 1
+            if self.consecutive_stream_flips >= 3 and not force:
+                if elapsed < 60.0:
+                    self.is_suppressed = True
+                    return {
+                        "status": "streaming_suppressed",
+                        "reason": f"Streaming visual noise suppressed (churn flip #{self.consecutive_stream_flips}); throttled to protect CPU & battery",
+                        "timestamp": now.isoformat(),
+                        "stream_flips": self.consecutive_stream_flips,
+                        "focus_shift": False,
+                    }
+
         # High-churn monitor suppression (htop, top, btop, watch)
         lower_title = title.lower()
         lower_proc = proc.lower()
@@ -282,7 +345,7 @@ class ScreenMemoryEngine:
                     "timestamp": now.isoformat(),
                 }
 
-        if not force and self.last_frame_time is not None and min_interval > 0.0 and elapsed < min_interval:
+        if not force and not is_focus_shift and self.last_frame_time is not None and min_interval > 0.0 and elapsed < min_interval:
             return {
                 "status": "cooldown_throttled",
                 "reason": f"Minimum capture interval ({min_interval}s) not yet reached ({round(elapsed, 1)}s elapsed).",
@@ -336,6 +399,7 @@ class ScreenMemoryEngine:
         else:
             ocr_text = ""
 
+        roi_mode = "active_window" if win_id else "full_screen"
         frame_record = {
             "id": f"frame-{now.strftime('%Y%m%d-%H%M%S')}-{frame_hash}",
             "timestamp": now.isoformat(),
@@ -346,6 +410,8 @@ class ScreenMemoryEngine:
             "size_kb": file_size_kb,
             "window_title": title,
             "process_name": proc,
+            "roi_mode": roi_mode,
+            "focus_shift": is_focus_shift,
             "ocr_text": ocr_text,
             "ocr_status": ocr_status,
         }
@@ -357,6 +423,7 @@ class ScreenMemoryEngine:
         # Update state
         self.last_frame = img
         self.last_frame_time = now
+        self.last_window_key = current_window_key
 
         return {
             "status": "captured",
@@ -366,6 +433,9 @@ class ScreenMemoryEngine:
             "size_kb": file_size_kb,
             "window_title": title,
             "process_name": proc,
+            "roi_mode": roi_mode,
+            "focus_shift": is_focus_shift,
+            "stream_flips": self.consecutive_stream_flips,
             "ocr_status": ocr_status,
             "timestamp": now.isoformat(),
         }
