@@ -1521,9 +1521,18 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(DOCS_WIKI_DIR), **kwargs)
 
     def _send_cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        origin = self.headers.get("Origin", "")
+        # Strictly restrict CORS to localhost and local extensions to prevent unauthorized memory exfiltration
+        if (
+            origin.startswith("http://localhost")
+            or origin.startswith("http://127.0.0.1")
+            or origin.startswith("moz-extension://")
+            or origin.startswith("chrome-extension://")
+            or not origin
+        ):
+            self.send_header("Access-Control-Allow-Origin", origin or "http://127.0.0.1")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def do_OPTIONS(self):
         self.send_response(204)

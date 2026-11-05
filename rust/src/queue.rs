@@ -141,7 +141,8 @@ impl JobQueue {
             return Ok(None);
         }
 
-        let candidate: Option<(i64, String, String, i32, Option<String>, String, Option<String>, Option<String>)> = tx
+        type JobRow = (i64, String, String, i32, Option<String>, String, Option<String>, Option<String>);
+        let candidate: Option<JobRow> = tx
             .query_row(
                 "SELECT id, job_type, payload, priority, error_message, created_at, started_at, completed_at
                  FROM cephalo_job_queue

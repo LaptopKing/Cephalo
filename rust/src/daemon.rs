@@ -97,11 +97,8 @@ impl DaemonSupervisor {
                                     if Path::new(img_path).exists() {
                                         let py_bin = self.root_dir.join(".venv/bin/python");
                                         let cmd_name = if py_bin.exists() { py_bin.to_string_lossy().to_string() } else { "python3".to_string() };
-                                        let script = format!(
-                                            "try:\n    import indra_ocr\n    o = indra_ocr.load(threads=1)\n    res = o.ocr('{}')\nexcept Exception:\n    pass\n",
-                                            img_path
-                                        );
-                                        let _ = std::process::Command::new(cmd_name).args(["-c", &script]).output();
+                                        let script = "import sys\ntry:\n    import indra_ocr\n    o = indra_ocr.load(threads=1)\n    res = o.ocr(sys.argv[1])\nexcept Exception:\n    pass\n";
+                                        let _ = std::process::Command::new(cmd_name).args(["-c", script, img_path]).output();
                                     }
                                 }
                                 Ok(())
@@ -170,12 +167,12 @@ impl DaemonSupervisor {
                 std::env::var("PATH").unwrap_or_default()
             );
 
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/strider".into());
+            let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_else(|_| ".".into());
             let systemd_dir = PathBuf::from(&home).join(".config/systemd/user");
             let _ = fs::create_dir_all(&systemd_dir);
             let service_file = systemd_dir.join("cephalo-daemon.service");
 
-            if let Ok(_) = fs::write(&service_file, service_content) {
+            if fs::write(&service_file, service_content).is_ok() {
                 let _ = Command::new("systemctl").args(["--user", "daemon-reload"]).output();
                 let _ = Command::new("systemctl").args(["--user", "enable", "cephalo-daemon.service"]).output();
                 let _ = Command::new("systemctl").args(["--user", "restart", "cephalo-daemon.service"]).output();

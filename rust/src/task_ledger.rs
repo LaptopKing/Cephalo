@@ -84,6 +84,8 @@ impl TaskLedger {
         Ok(())
     }
 
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub fn register_task(
         &self,
         task_id: &str,
@@ -178,6 +180,7 @@ impl TaskLedger {
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
     }
 
+    #[allow(dead_code)]
     pub fn complete_task(
         &self,
         task_id: &str,

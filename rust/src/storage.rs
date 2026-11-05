@@ -62,7 +62,7 @@ impl StorageEngine {
 
         if let Ok(file) = File::open(&self.jsonl_path) {
             let reader = BufReader::new(file);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
                     continue;
@@ -75,6 +75,7 @@ impl StorageEngine {
         records
     }
 
+    #[allow(dead_code)]
     pub fn count(&self) -> usize {
         self.load_records().len()
     }
@@ -113,6 +114,7 @@ impl StorageEngine {
 
         // Contextual supersession: if this record is a stateful preference, deprecate older conflicts
         let mut updated_records = records;
+        let mut deprecation_occurred = false;
         if category == "preferences" || category == "user_preference" || category == "constraints" {
             let query_words: Vec<String> = clean_text
                 .to_lowercase()
@@ -128,29 +130,40 @@ impl StorageEngine {
                     if overlap >= 3 {
                         r.is_deprecated = Some(true);
                         r.superseded_by = Some(next_id.clone());
+                        deprecation_occurred = true;
                     }
                 }
             }
         }
 
-        updated_records.push(new_record.clone());
+        if deprecation_occurred {
+            updated_records.push(new_record.clone());
+            // Write all records atomically
+            let temp_path = self.jsonl_path.with_extension("tmp");
+            {
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(&temp_path)?;
 
-        // Write all records atomically
-        let temp_path = self.jsonl_path.with_extension("tmp");
-        {
+                for r in &updated_records {
+                    let line = serde_json::to_string(r).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                    writeln!(file, "{}", line)?;
+                }
+                file.flush()?;
+            }
+            std::fs::rename(temp_path, &self.jsonl_path)?;
+        } else {
+            // High-speed O(1) single line append - zero whole-file rewrites!
             let mut file = OpenOptions::new()
                 .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&temp_path)?;
-
-            for r in &updated_records {
-                let line = serde_json::to_string(r).unwrap();
-                writeln!(file, "{}", line)?;
-            }
+                .append(true)
+                .open(&self.jsonl_path)?;
+            let line = serde_json::to_string(&new_record).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            writeln!(file, "{}", line)?;
             file.flush()?;
         }
-        std::fs::rename(temp_path, &self.jsonl_path)?;
 
         Ok(new_record)
     }

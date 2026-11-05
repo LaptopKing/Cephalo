@@ -112,7 +112,7 @@ class TestScreenMemoryDeltaE2E(unittest.TestCase):
 
     def setUp(self):
         self.test_dir = Path(tempfile.mkdtemp(prefix="cephalo_test_screen_"))
-        self.engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05)
+        self.engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05, min_interval_seconds=0.0)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
@@ -167,6 +167,17 @@ class TestScreenMemoryDeltaE2E(unittest.TestCase):
         res = self.engine.capture_step(image=img_b, window_context=ctx)
         self.assertEqual(res["status"], "captured")
         self.assertGreaterEqual(res["delta"], 0.05)
+
+    def test_cooldown_throttled_on_rapid_changes(self):
+        throttled_engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05, min_interval_seconds=30.0)
+        img_a = self._create_mock_image((0, 0, 0), text="State 1")
+        img_b = self._create_mock_image((200, 200, 200), text="State 2")
+        ctx = {"title": "Terminal", "process": "bash", "platform": "linux"}
+
+        res1 = throttled_engine.capture_step(image=img_a, window_context=ctx)
+        self.assertEqual(res1["status"], "captured")
+        res2 = throttled_engine.capture_step(image=img_b, window_context=ctx)
+        self.assertEqual(res2["status"], "cooldown_throttled")
 
     def test_safeguards_shield_abort(self):
         img = self._create_mock_image((10, 10, 10))

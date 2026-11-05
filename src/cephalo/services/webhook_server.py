@@ -57,9 +57,18 @@ class WebhookRequestHandler(BaseHTTPRequestHandler):
     auth_token: Optional[str] = None
 
     def _send_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        origin = self.headers.get("Origin", "")
+        # Strictly restrict CORS to local extensions and localhost to prevent cross-origin memory poisoning
+        if (
+            origin.startswith("http://localhost")
+            or origin.startswith("http://127.0.0.1")
+            or origin.startswith("moz-extension://")
+            or origin.startswith("chrome-extension://")
+            or not origin
+        ):
+            self.send_header("Access-Control-Allow-Origin", origin or "http://127.0.0.1")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)

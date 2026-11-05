@@ -142,7 +142,7 @@ impl ScreenEngine {
                 if out.status.success() {
                     let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
                     let parts: Vec<&str> = text.split(", ").collect();
-                    let proc = parts.get(0).copied().unwrap_or("").trim().to_string();
+                    let proc = parts.first().copied().unwrap_or("").trim().to_string();
                     let title = parts.get(1).copied().unwrap_or("").trim().to_string();
                     return (title, proc);
                 }
@@ -185,20 +185,18 @@ impl ScreenEngine {
 
         // 2. High-churn monitor suppression (htop, top, btop)
         let lower_title = title.to_lowercase();
-        if lower_title.contains("htop") || lower_title.contains("btop") || lower_title.contains("top") {
-            if !force {
-                return ScreenCaptureResult {
-                    status: "high_churn_suppressed".to_string(),
-                    frame_id: None,
-                    path: None,
-                    delta: None,
-                    window_title: Some(title),
-                    process_name: Some(proc),
-                    ocr_status: None,
-                    reason: Some("Flicker suppression active for system monitor window".to_string()),
-                    timestamp: now.to_rfc3339(),
-                };
-            }
+        if !force && (lower_title.contains("htop") || lower_title.contains("btop") || lower_title.contains("top")) {
+            return ScreenCaptureResult {
+                status: "high_churn_suppressed".to_string(),
+                frame_id: None,
+                path: None,
+                delta: None,
+                window_title: Some(title),
+                process_name: Some(proc),
+                ocr_status: None,
+                reason: Some("Flicker suppression active for system monitor window".to_string()),
+                timestamp: now.to_rfc3339(),
+            };
         }
 
         let date_str = now.format("%Y-%m-%d").to_string();

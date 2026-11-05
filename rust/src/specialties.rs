@@ -95,12 +95,12 @@ impl SpecialtyManager {
                             });
                         }
                         // Case 2: Flat markdown file (slug.md)
-                        else if path.is_file() && path.extension().map_or(false, |ext| ext == "md") {
+                        else if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
                             let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
                             let content = fs::read_to_string(&path).unwrap_or_default();
                             let first_line = content.lines().next().unwrap_or("").trim();
-                            let title = if first_line.starts_with("# ") {
-                                first_line[2..].trim().to_string()
+                            let title = if let Some(stripped) = first_line.strip_prefix("# ") {
+                                stripped.trim().to_string()
                             } else {
                                 file_stem.replace('-', " ")
                             };
@@ -158,8 +158,8 @@ impl SpecialtyManager {
         if file_target.exists() {
             let content = fs::read_to_string(&file_target).ok()?;
             let first_line = content.lines().next().unwrap_or("").trim();
-            let title = if first_line.starts_with("# ") {
-                first_line[2..].trim().to_string()
+            let title = if let Some(stripped) = first_line.strip_prefix("# ") {
+                stripped.trim().to_string()
             } else {
                 slug.replace('-', " ")
             };

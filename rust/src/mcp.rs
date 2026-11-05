@@ -429,16 +429,42 @@ impl<'a> McpServer<'a> {
                     "cephalo_run_sandboxed" => {
                         let code = args.get("code").and_then(|v| v.as_str()).unwrap_or("");
                         let lang = args.get("language").and_then(|v| v.as_str()).unwrap_or("python");
-                        let output = Command::new(if lang == "bash" { "bash" } else { "python3" })
-                            .args(["-c", code])
+                        let allow_net = args.get("allow_network").and_then(|v| v.as_bool()).unwrap_or(false);
+                        let timeout = args.get("timeout_seconds").and_then(|v| v.as_u64()).unwrap_or(30);
+
+                        let py_bin = self.root_dir.join(".venv/bin/python");
+                        let cmd_name = if py_bin.exists() {
+                            py_bin.to_string_lossy().to_string()
+                        } else {
+                            "python3".to_string()
+                        };
+
+                        let runner_script = "import sys, json\nfrom cephalo.services.sandboxed_runner import SandboxedRunner\nr = SandboxedRunner()\na = json.loads(sys.argv[1])\nres = r.run_code(a.get('code',''), a.get('language','python'), a.get('allow_network',False), a.get('timeout_seconds',30))\nprint(json.dumps(res))\n";
+                        let args_json = serde_json::to_string(&json!({
+                            "code": code,
+                            "language": lang,
+                            "allow_network": allow_net,
+                            "timeout_seconds": timeout,
+                        })).unwrap_or_default();
+
+                        let output = Command::new(cmd_name)
+                            .args(["-c", runner_script, &args_json])
                             .output();
+
                         match output {
-                            Ok(out) => json!({
-                                "status": if out.status.success() { "success" } else { "failed" },
-                                "stdout": String::from_utf8_lossy(&out.stdout),
-                                "stderr": String::from_utf8_lossy(&out.stderr),
-                                "exit_code": out.status.code()
-                            }),
+                            Ok(out) => {
+                                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                                if let Ok(val) = serde_json::from_str::<Value>(&stdout) {
+                                    val
+                                } else {
+                                    json!({
+                                        "status": if out.status.success() { "success" } else { "failed" },
+                                        "stdout": stdout,
+                                        "stderr": String::from_utf8_lossy(&out.stderr).trim().to_string(),
+                                        "exit_code": out.status.code()
+                                    })
+                                }
+                            }
                             Err(e) => json!({ "status": "error", "message": e.to_string() }),
                         }
                     }

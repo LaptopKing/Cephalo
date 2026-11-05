@@ -235,6 +235,7 @@ impl ResourceGovernor {
         }
     }
 
+    #[allow(dead_code)]
     /// Returns whether a heavy background job is allowed to execute right now.
     pub fn is_heavy_allowed(&mut self) -> bool {
         let m = self.inspect_resources();

@@ -66,10 +66,11 @@ impl Sanitizer {
         entropy
     }
 
+    #[allow(dead_code)]
     /// Checks if a line resembles programming code to avoid corrupting identifiers.
     fn is_code_line(line: &str) -> bool {
         let trimmed = line.trim();
-        if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*") {
+        if trimmed.starts_with("//") || trimmed.starts_with('#') || trimmed.starts_with("/*") {
             return false;
         }
         trimmed.contains("fn ")
@@ -104,7 +105,7 @@ impl Sanitizer {
         }
 
         // Apply replacements from back to front
-        replacements.sort_by(|a, b| b.0.cmp(&a.0));
+        replacements.sort_by_key(|a| std::cmp::Reverse(a.0));
         for (start, end) in replacements {
             result.replace_range(start..end, "<REDACTED_HIGH_ENTROPY_SECRET>");
         }
@@ -112,9 +113,10 @@ impl Sanitizer {
         result
     }
 
-    /// Extracts hashtag topics (`#rust`, `#architecture`) from text.
+    /// Extracts hashtag topics (`#rust`, `#architecture`) from text using cached static regex.
     pub fn extract_tags(text: &str) -> Vec<String> {
-        let tag_re = Regex::new(r"#([a-zA-Z0-9_\-]+)").unwrap();
+        static TAG_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+        let tag_re = TAG_RE.get_or_init(|| Regex::new(r"#([a-zA-Z0-9_\-]+)").unwrap());
         let mut tags = HashSet::new();
         for cap in tag_re.captures_iter(text) {
             if let Some(t) = cap.get(1) {

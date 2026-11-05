@@ -172,12 +172,14 @@ class ScreenMemoryEngine:
         base_dir: Optional[Path] = None,
         min_delta_threshold: float = 0.05,
         enable_ocr: bool = True,
+        min_interval_seconds: Optional[float] = None,
     ):
         self.base_dir = base_dir or FRAMES_DIR
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.index_file = self.base_dir / "frame_index.jsonl"
         self.min_delta_threshold = min_delta_threshold
         self.enable_ocr = enable_ocr
+        self.min_interval_seconds = min_interval_seconds
         self._ocr_conv: Optional[Any] = None
         self.last_frame: Optional[Any] = None
         self.last_frame_time: Optional[datetime.datetime] = None
@@ -236,14 +238,36 @@ class ScreenMemoryEngine:
                 "process_name": proc,
             }
 
-        # 2. Cooldown & Flicker Debounce Protection
+        # 2. Grab Image
+        img = image if image is not None else capture_screen_image()
+        if img is None:
+            return {
+                "status": "error",
+                "error": "Screen capture returned no image (headless or permission denied)",
+                "timestamp": now.isoformat(),
+            }
+
+        # 3. Delta Gating
+        delta = compute_frame_delta(self.last_frame, img)
+        if not force and self.last_frame is not None and delta < self.min_delta_threshold:
+            return {
+                "status": "skipped_no_change",
+                "delta": round(delta, 4),
+                "threshold": self.min_delta_threshold,
+                "timestamp": now.isoformat(),
+            }
+
+        # 4. Cooldown & Flicker Debounce Protection (Only evaluated when screen actually changes)
         # Prevents fast-scrolling AI agent terminal output or htop graphs from flooding CPU with OCR
-        try:
-            from cephalo.services.subagent_governor import SubagentGovernor
-            res = SubagentGovernor().inspect_resources()
-            min_interval = 90 if res.get("on_battery") else 45
-        except Exception:
-            min_interval = 45
+        if self.min_interval_seconds is not None:
+            min_interval = self.min_interval_seconds
+        else:
+            try:
+                from cephalo.services.subagent_governor import SubagentGovernor
+                res = SubagentGovernor().inspect_resources()
+                min_interval = 90.0 if res.get("on_battery") else 45.0
+            except Exception:
+                min_interval = 45.0
 
         elapsed = (now - self.last_frame_time).total_seconds() if self.last_frame_time else 999.0
 
@@ -258,29 +282,10 @@ class ScreenMemoryEngine:
                     "timestamp": now.isoformat(),
                 }
 
-        if not force and self.last_frame_time is not None and elapsed < min_interval:
+        if not force and self.last_frame_time is not None and min_interval > 0.0 and elapsed < min_interval:
             return {
                 "status": "cooldown_throttled",
                 "reason": f"Minimum capture interval ({min_interval}s) not yet reached ({round(elapsed, 1)}s elapsed).",
-                "timestamp": now.isoformat(),
-            }
-
-        # 3. Grab Image
-        img = image if image is not None else capture_screen_image()
-        if img is None:
-            return {
-                "status": "error",
-                "error": "Screen capture returned no image (headless or permission denied)",
-                "timestamp": now.isoformat(),
-            }
-
-        # 4. Delta Gating
-        delta = compute_frame_delta(self.last_frame, img)
-        if not force and self.last_frame is not None and delta < self.min_delta_threshold:
-            return {
-                "status": "skipped_no_change",
-                "delta": round(delta, 4),
-                "threshold": self.min_delta_threshold,
                 "timestamp": now.isoformat(),
             }
 

@@ -17,6 +17,7 @@ impl ProfileManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn exists(&self) -> bool {
         self.profile_path.exists()
     }
