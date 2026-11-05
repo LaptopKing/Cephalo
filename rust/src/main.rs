@@ -2,6 +2,8 @@
 //! ==============================================
 //! Ultra-low latency (<3ms), zero-GIL, hardware-aware cognitive coprocessor.
 
+#![forbid(unsafe_code)]
+
 mod daemon;
 mod governor;
 mod mcp;

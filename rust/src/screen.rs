@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 pub struct SafeguardsConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default = "default_false")]
+    pub screen_capture_enabled: bool,
     #[serde(default)]
     pub blacklisted_processes: Vec<String>,
     #[serde(default)]
@@ -25,10 +27,15 @@ fn default_true() -> bool {
     true
 }
 
+fn default_false() -> bool {
+    false
+}
+
 impl Default for SafeguardsConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            screen_capture_enabled: false,
             blacklisted_processes: vec![
                 "1password".into(),
                 "bitwarden".into(),
@@ -95,6 +102,11 @@ impl ScreenEngine {
             base_dir,
             safeguards,
         }
+    }
+
+    /// Returns whether background screen memory capture is enabled in safeguards.json
+    pub fn is_enabled(&self) -> bool {
+        self.safeguards.enabled && self.safeguards.screen_capture_enabled
     }
 
     /// Checks if a window title or process is shielded by safeguards.
@@ -167,7 +179,22 @@ impl ScreenEngine {
         let now = chrono::Utc::now();
         let (title, proc) = Self::get_active_window();
 
-        // 1. Safeguard Check
+        // 0. Safeguard Check: is screen capture enabled
+        if !force && !self.safeguards.screen_capture_enabled {
+            return ScreenCaptureResult {
+                status: "disabled".to_string(),
+                frame_id: None,
+                path: None,
+                delta: None,
+                window_title: Some(title),
+                process_name: Some(proc),
+                ocr_status: None,
+                reason: Some("Screen memory capture is disabled in safeguards.json".to_string()),
+                timestamp: now.to_rfc3339(),
+            };
+        }
+
+        // 1. Safeguard Check: blacklisted processes/titles
         let (shielded, reason) = self.is_shielded(&title, &proc);
         if shielded {
             return ScreenCaptureResult {
@@ -253,6 +280,40 @@ impl ScreenEngine {
             let _ = std::process::Command::new("powershell")
                 .args(["-NoProfile", "-Command", &ps_cmd])
                 .output();
+        }
+
+        // 3. Perceptual Difference Check (100% Safe Rust, 0 unsafe)
+        let last_hash_file = self.base_dir.join(".last_frame_hash");
+        if frame_path.exists() {
+            if let Ok(bytes) = fs::read(&frame_path) {
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                bytes.hash(&mut hasher);
+                title.hash(&mut hasher);
+                let current_hash = hasher.finish();
+
+                if let Ok(prev_str) = fs::read_to_string(&last_hash_file) {
+                    if let Ok(prev_hash) = prev_str.trim().parse::<u64>() {
+                        if !force && current_hash == prev_hash {
+                            // Frame is identical to previous capture -> discard to save disk and OCR CPU
+                            let _ = fs::remove_file(&frame_path);
+                            return ScreenCaptureResult {
+                                status: "skipped_no_change".to_string(),
+                                frame_id: None,
+                                path: None,
+                                delta: Some(0.0),
+                                window_title: Some(title),
+                                process_name: Some(proc),
+                                ocr_status: None,
+                                reason: Some("Identical screen state detected; skipping capture and OCR".to_string()),
+                                timestamp: now.to_rfc3339(),
+                            };
+                        }
+                    }
+                }
+                let _ = fs::write(&last_hash_file, current_hash.to_string());
+            }
         }
 
         // Enqueue decoupled OCR job into background queue

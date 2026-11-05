@@ -140,7 +140,10 @@ impl DaemonSupervisor {
             if last_periodic.elapsed().as_secs() >= interval_seconds {
                 last_periodic = std::time::Instant::now();
                 if metrics.safe_concurrency > 0 {
-                    let _ = queue.enqueue("screen_capture", None, 4, true);
+                    let screen_engine = crate::screen::ScreenEngine::new(&self.data_dir, &self.root_dir);
+                    if screen_engine.is_enabled() {
+                        let _ = queue.enqueue("screen_capture", None, 4, true);
+                    }
                     let _ = queue.enqueue("transcript_harvest", None, 3, true);
                     let _ = queue.enqueue("continuous_learn", None, 2, true);
                 }
