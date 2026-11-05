@@ -182,6 +182,36 @@ impl DaemonSupervisor {
                 println!("[+] Installed and started systemd user service: {}", service_file.display());
                 return true;
             }
+        } else if cfg!(target_os = "macos") {
+            let plist = format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+                 <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+                 <plist version=\"1.0\">\n\
+                 <dict>\n\
+                     <key>Label</key><string>com.cephalo.daemon</string>\n\
+                     <key>ProgramArguments</key>\n\
+                     <array>\n\
+                         <string>{}</string>\n\
+                         <string>daemon</string>\n\
+                         <string>run</string>\n\
+                         <string>--interval</string>\n\
+                         <string>90</string>\n\
+                     </array>\n\
+                     <key>RunAtLoad</key><true/>\n\
+                     <key>KeepAlive</key><true/>\n\
+                 </dict>\n\
+                 </plist>",
+                binary_path.display()
+            );
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+            let agent_dir = PathBuf::from(&home).join("Library/LaunchAgents");
+            let _ = fs::create_dir_all(&agent_dir);
+            let plist_path = agent_dir.join("com.cephalo.daemon.plist");
+            if fs::write(&plist_path, plist).is_ok() {
+                let _ = Command::new("launchctl").args(["load", "-w", &plist_path.to_string_lossy()]).output();
+                println!("[+] Registered macOS LaunchAgent: {}", plist_path.display());
+                return true;
+            }
         } else if cfg!(target_os = "windows") {
             let task_name = "CephaloContinuousDaemon";
             let cmd_str = format!("\"{}\" daemon run --interval 90", binary_path.display());

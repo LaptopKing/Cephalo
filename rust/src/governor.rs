@@ -97,16 +97,50 @@ impl ResourceGovernor {
         (on_battery, battery_capacity)
     }
 
+    /// Cross-platform battery probing for Linux, macOS, and Windows.
+    fn probe_battery() -> (bool, Option<f32>) {
+        if cfg!(target_os = "linux") {
+            let (on_bat, cap) = Self::probe_linux_battery();
+            if cap.is_some() || on_bat {
+                return (on_bat, cap);
+            }
+        } else if cfg!(target_os = "macos") {
+            if let Ok(out) = std::process::Command::new("pmset").args(["-g", "batt"]).output() {
+                let text = String::from_utf8_lossy(&out.stdout);
+                let on_bat = text.contains("Battery Power");
+                if let Some(idx) = text.find('%') {
+                    if idx >= 3 {
+                        let slice = &text[idx - 3..idx].trim_start_matches(|c: char| !c.is_ascii_digit());
+                        if let Ok(val) = slice.parse::<f32>() {
+                            return (on_bat, Some(val));
+                        }
+                    }
+                }
+                return (on_bat, None);
+            }
+        } else if cfg!(target_os = "windows") {
+            if let Ok(out) = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", "Get-CimInstance -ClassName Win32_Battery | Select-Object -ExpandProperty EstimatedChargeRemaining"])
+                .output()
+            {
+                let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if let Ok(val) = text.parse::<f32>() {
+                    return (true, Some(val));
+                }
+            }
+        }
+        (false, None)
+    }
+
     /// Evaluates real-time hardware status against Cephalo's strict safety hierarchy.
     pub fn inspect_resources(&mut self) -> HardwareMetrics {
         self.system.refresh_cpu_all();
         self.system.refresh_memory();
 
-        let (mut on_battery, battery_percent) = Self::probe_linux_battery();
+        let (mut on_battery, battery_percent) = Self::probe_battery();
 
-        // Fallback for Windows/macOS/container via sysinfo components if Linux sysfs not found
-        if battery_percent.is_none() {
-            // Assume AC power if no battery detected
+        // Fallback for container or desktop without battery
+        if battery_percent.is_none() && !on_battery {
             on_battery = false;
         }
 
@@ -117,8 +151,8 @@ impl ResourceGovernor {
         let mem_total_mb = self.system.total_memory() / (1024 * 1024);
         let mem_available_mb = self.system.available_memory() / (1024 * 1024);
 
-        let mut safe_concurrency = 1;
-        let mut mode = GovernorMode::BatterySaverSequential;
+        let safe_concurrency;
+        let mode;
         let throttle_reason;
         let recommended_threads;
 

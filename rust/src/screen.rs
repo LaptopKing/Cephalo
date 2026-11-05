@@ -121,11 +121,36 @@ impl ScreenEngine {
         (false, None)
     }
 
-    /// Inspects the active window title and process via Linux xdotool or /proc.
+    /// Inspects the active window title and process in a cross-platform manner (Linux, macOS, Windows).
     pub fn get_active_window() -> (String, String) {
         if cfg!(target_os = "linux") {
             let output = std::process::Command::new("xdotool")
                 .args(["getactivewindow", "getwindowname"])
+                .output();
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let title = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    return (title, "".to_string());
+                }
+            }
+        } else if cfg!(target_os = "macos") {
+            let cmd = "tell application \"System Events\" to get {name of first application process whose frontmost is true, name of window 1 of (first application process whose frontmost is true)}";
+            let output = std::process::Command::new("osascript")
+                .args(["-e", cmd])
+                .output();
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    let parts: Vec<&str> = text.split(", ").collect();
+                    let proc = parts.get(0).copied().unwrap_or("").trim().to_string();
+                    let title = parts.get(1).copied().unwrap_or("").trim().to_string();
+                    return (title, proc);
+                }
+            }
+        } else if cfg!(target_os = "windows") {
+            let script = "$h = [System.IntPtr]::Zero; Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win { [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow(); [DllImport(\"user32.dll\")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count); }'; $h = [Win]::GetForegroundWindow(); $sb = New-Object System.Text.StringBuilder 256; [Win]::GetWindowText($h, $sb, 256) | Out-Null; $sb.ToString()";
+            let output = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", script])
                 .output();
             if let Ok(out) = output {
                 if out.status.success() {
@@ -185,9 +210,10 @@ impl ScreenEngine {
         let frame_filename = format!("{}.webp", frame_id);
         let frame_path = day_dir.join(&frame_filename);
 
-        // Physically capture the screen image to disk (ImageMagick / scrot / maim fallback)
+        // Physically capture the screen image to disk in a cross-platform manner
         let mut _capture_ok = false;
         if cfg!(target_os = "linux") {
+            // Try ImageMagick import first
             let out = std::process::Command::new("import")
                 .args(["-window", "root", "-quality", "75", &frame_path.to_string_lossy()])
                 .output();
@@ -196,6 +222,39 @@ impl ScreenEngine {
                     _capture_ok = true;
                 }
             }
+            // Wayland fallback: grim
+            if !_capture_ok {
+                let out = std::process::Command::new("grim")
+                    .arg(&frame_path)
+                    .output();
+                if let Ok(o) = out {
+                    if o.status.success() && frame_path.exists() {
+                        _capture_ok = true;
+                    }
+                }
+            }
+        } else if cfg!(target_os = "macos") {
+            let out = std::process::Command::new("screencapture")
+                .args(["-x", "-t", "webp", &frame_path.to_string_lossy()])
+                .output();
+            if let Ok(o) = out {
+                if o.status.success() && frame_path.exists() {
+                    _capture_ok = true;
+                }
+            }
+        } else if cfg!(target_os = "windows") {
+            let ps_cmd = format!(
+                "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; \
+                 $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; \
+                 $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height; \
+                 $g = [System.Drawing.Graphics]::FromImage($bmp); \
+                 $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size); \
+                 $bmp.Save('{}'); $g.Dispose(); $bmp.Dispose();",
+                frame_path.to_string_lossy().replace('\\', "\\\\")
+            );
+            let _ = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-Command", &ps_cmd])
+                .output();
         }
 
         // Enqueue decoupled OCR job into background queue

@@ -438,19 +438,34 @@ fn determine_root_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("CEPHALO_ROOT") {
         return PathBuf::from(dir);
     }
-    let current_exe = std::env::current_exe().unwrap_or_default();
-    if let Some(parent) = current_exe.parent() {
-        if parent.ends_with("release") || parent.ends_with("debug") {
-            if let Some(target) = parent.parent() {
-                if let Some(rust_dir) = target.parent() {
-                    if let Some(root) = rust_dir.parent() {
-                        return root.to_path_buf();
-                    }
-                }
+    // Check relative to current executable walking up
+    if let Ok(current_exe) = std::env::current_exe() {
+        let mut curr = current_exe.parent();
+        while let Some(dir) = curr {
+            if dir.join("USER_PROFILE.md").exists() || dir.join("brain.py").exists() {
+                return dir.to_path_buf();
             }
+            curr = dir.parent();
         }
     }
-    PathBuf::from("/home/strider/Cephalo")
+    // Check current working directory walking up
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut curr = Some(cwd.as_path());
+        while let Some(dir) = curr {
+            if dir.join("USER_PROFILE.md").exists() || dir.join("brain.py").exists() {
+                return dir.to_path_buf();
+            }
+            curr = dir.parent();
+        }
+    }
+    // Check user home directory Cephalo
+    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        let candidate = PathBuf::from(home).join("Cephalo");
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn run_python_cli(root_dir: &Path, subcommand: &str, extra_args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
