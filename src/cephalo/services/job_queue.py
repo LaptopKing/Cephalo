@@ -436,10 +436,14 @@ class QueueWorker:
         )
 
     def _handle_screen_capture(self, payload: Dict[str, Any]) -> None:
-        """Runs perceptual delta screen capture and enqueues OCR."""
-        from cephalo.services.screen_recorder import ScreenMemoryEngine
-        engine = ScreenMemoryEngine()
-        engine.capture_step(force=payload.get("force", False))
+        """Runs perceptual delta screen capture via sovereign native Rust engine."""
+        cmd = ["cephalo", "screen", "snap"]
+        if payload.get("force", False):
+            cmd.append("--force")
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=10)
+        except Exception as e:
+            logger.warning(f"Native Rust screen capture failed: {e}")
 
     def _handle_continuous_learn(self, payload: Dict[str, Any]) -> None:
         """Runs continuous learning cycle."""
@@ -489,8 +493,8 @@ class QueueWorker:
             logger.warning(f"Indra OCR execution failed for frame {image_path}: {e}")
             raw_text = ""
 
-        from cephalo.services.screen_recorder import ScreenMemoryEngine
-        clean_text = ScreenMemoryEngine()._sanitize_text(raw_text)
+        from cephalo.core.embedding_pipeline import RegexShield
+        clean_text, _ = RegexShield().mask(raw_text)
 
         # Update frame_index.jsonl
         index_file = DATA_DIR / "frames" / "frame_index.jsonl"

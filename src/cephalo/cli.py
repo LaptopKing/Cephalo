@@ -1218,47 +1218,16 @@ def cmd_mcp(args) -> None:
 
 
 def cmd_daemon(args) -> None:
-    """Manages the always-on background daemon."""
-    from cephalo.services.cephalo_daemon import (
-        CephaloDaemon,
-        get_daemon_status,
-        start_daemon_detached,
-        stop_daemon,
-        install_autostart,
-        uninstall_autostart,
-    )
+    """Manages the always-on background daemon via native Rust engine."""
     action = getattr(args, "daemon_action", None) or "status"
-    interval = getattr(args, "interval", 90)
-
+    interval = str(getattr(args, "interval", 90))
+    cmd = ["cephalo", "daemon", action]
     if action == "run":
-        daemon = CephaloDaemon(interval_seconds=interval)
-        daemon.run_foreground()
-    elif action == "start":
-        start_daemon_detached(interval=interval)
-    elif action == "stop":
-        stop_daemon()
-    elif action == "status":
-        info = get_daemon_status()
-        if args.json:
-            print(json.dumps(info, indent=2, ensure_ascii=False))
-        else:
-            print("=" * 65)
-            print("  CEPHALO ALWAYS-ON DAEMON STATUS")
-            print("=" * 65)
-            print(f"Status:        {'RUNNING (Active)' if info['running'] else 'STOPPED'}")
-            if info["pid"]:
-                print(f"Process PID:   {info['pid']}")
-            detail = info.get("detail", {})
-            if detail:
-                print(f"Last Heartbeat: {detail.get('last_heartbeat', 'N/A')}")
-                print(f"Interval:       {detail.get('interval_seconds', 90)}s")
-                last_c = detail.get("last_cycle", {})
-                if "learning" in last_c:
-                    l = last_c["learning"]
-                    print(f"Last Learning:  {l.get('scanned_projects_count', 0)} projects, {len(l.get('discovered_technologies', []))} stacks")
-                if "git_pushed" in last_c:
-                    print(f"GitHub Sync:    {'Pushed' if last_c['git_pushed'] else 'Up to date'}")
-            print("=" * 65)
+        cmd.extend(["--interval", interval])
+        try:
+            subprocess.run(cmd, check=False)
+        except Exception as e:
+            print(f"[-] Failed to execute cephalo daemon: {e}")
     elif action in ("install-task", "install-autostart", "autostart"):
         install_autostart()
     elif action in ("uninstall-task", "uninstall-autostart"):
@@ -1458,9 +1427,10 @@ def cmd_webhook(args) -> None:
     host = getattr(args, "host", "127.0.0.1")
 
     if action == "serve":
-        from cephalo.services.webhook_server import WebhookServer
-        server = WebhookServer(host=host, port=port, auth_token=getattr(args, "token", None))
-        server.start(background=False)
+        cmd = ["cephalo", "webhook", "serve", "--port", str(port)]
+        if getattr(args, "token", None):
+            cmd.extend(["--token", args.token])
+        subprocess.run(cmd, check=False)
 
     elif action == "status":
         import urllib.request
@@ -1483,17 +1453,20 @@ def cmd_webhook(args) -> None:
                 print("    Start it with: cephalo webhook serve (or start cephalo daemon)")
 
     elif action == "send":
-        from cephalo.services.webhook_server import send_quick_memory
+        import urllib.request
         text = getattr(args, "text", "")
         cat = getattr(args, "category", "quick_note")
+        payload = json.dumps({"text": text, "category": cat}).encode("utf-8")
+        req = urllib.request.Request(f"http://{host}:{port}/ingest", data=payload, headers={"Content-Type": "application/json"})
         try:
-            res = send_quick_memory(text=text, category=cat, host=host, port=port)
-            if args.json:
-                print(json.dumps(res, indent=2))
-            else:
-                print(f"[+] Memory Sent via Webhook [{res.get('id', 'N/A')}]:")
-                print(f"    Category:  {res.get('category')}")
-                print(f"    Sanitized: {res.get('sanitized')}")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                res = json.loads(resp.read().decode("utf-8"))
+                if args.json:
+                    print(json.dumps(res, indent=2))
+                else:
+                    print(f"[+] Memory Sent via Webhook [{res.get('id', 'N/A')}]:")
+                    print(f"    Category:  {res.get('category')}")
+                    print(f"    Sanitized: {res.get('sanitized')}")
         except Exception as e:
             print(f"[-] Error sending memory to webhook: {e}")
 
@@ -1625,96 +1598,17 @@ def cmd_safeguard(args) -> None:
 
 
 def cmd_screen(args) -> None:
-    """Manages cross-platform perceptual delta screen capture and visual memory."""
-    from cephalo.services.screen_recorder import ScreenMemoryEngine, get_active_window_context
-
+    """Manages desktop screen memory and visual timeline via sovereign native Rust engine."""
     action = getattr(args, "screen_action", None) or "status"
-    engine = ScreenMemoryEngine()
-
-    if action == "snap":
-        force = getattr(args, "force", False)
-        res = engine.capture_step(force=force)
-        if args.json:
-            print(json.dumps(res, indent=2, ensure_ascii=False))
-        else:
-            st = res.get("status")
-            if st == "captured":
-                print(f"[+] Screen Keyframe Captured [{res.get('frame_id')}]:")
-                print(f"    Path:    {res.get('path')}")
-                print(f"    Delta:   {res.get('delta')} (Threshold exceeded)")
-                print(f"    Size:    {res.get('size_kb')} KB (WebP)")
-                print(f"    Window:  {res.get('window_title') or 'N/A'}")
-                print(f"    Process: {res.get('process_name') or 'N/A'}")
-            elif st == "skipped_no_change":
-                print(f"[*] Screen Unchanged: delta {res.get('delta')} < threshold {res.get('threshold')}. No disk write.")
-            elif st == "shielded":
-                print(f"[!] Capture Blocked by Safeguard Shield:")
-                print(f"    Reason:  {res.get('reason')}")
-            else:
-                print(f"[-] Screen capture status: {st} ({res.get('error', 'unknown')})")
-
-    elif action == "status":
-        ctx = get_active_window_context()
-        frames = engine.get_daily_frames()
-        data = {
-            "today_frames": len(frames),
-            "active_window": ctx.get("title"),
-            "active_process": ctx.get("process"),
-            "platform": ctx.get("platform"),
-            "frames_dir": str(engine.base_dir),
-        }
-        if args.json:
-            print(json.dumps(data, indent=2, ensure_ascii=False))
-        else:
-            print("=" * 65)
-            print("  📸  CEPHALO SCREEN MEMORY ENGINE STATUS")
-            print("=" * 65)
-            print(f"  Frames Logged Today:  {len(frames)}")
-            print(f"  Active Window Title:  {ctx.get('title') or '(None / Headless)'}")
-            print(f"  Active Process:       {ctx.get('process') or '(None / Headless)'}")
-            print(f"  Platform:             {ctx.get('platform')}")
-            print(f"  Storage Directory:    {engine.base_dir}")
-            print("=" * 65)
-
-    elif action == "prune":
-        days = getattr(args, "days", 14)
-        res = engine.prune_frames(max_age_days=days)
-        if args.json:
-            print(json.dumps(res, indent=2))
-        else:
-            print(f"[+] Pruned {res.get('deleted_frames', 0)} old frames older than {days} days.")
-            print(f"[+] Created {res.get('thumbnails_created', 0)} micro-thumbnails for DeepWiki scrubbing.")
-
-    elif action == "enable":
-        from cephalo.core.safeguards import SAFEGUARDS_FILE, load_safeguards_config, save_safeguards_config
-        cfg = load_safeguards_config(SAFEGUARDS_FILE)
-        cfg["screen_capture_enabled"] = True
-        save_safeguards_config(cfg, SAFEGUARDS_FILE)
-        print("\n" + "=" * 78)
-        print("  📸 Desktop Screen Memory & Visual Timeline: ENABLED")
-        print("=" * 78)
-        print("  • How it operates:")
-        print("    Native safe Rust captures keyframes when your screen significantly shifts,")
-        print("    computes a 64-bit dHash perceptual difference (0 unsafe code), and enqueues")
-        print("    OCR text extraction in the background to power the 24-hour DeepWiki scrubber.")
-        print("  • Resource Profile:")
-        print("    - CPU: ~15-20% CPU for ~2s only during background OCR jobs.")
-        print("    - Disk: ~50-80 KB WebP keyframe per unique screen state.")
-        print("    - Battery: Automatically throttles or pauses when battery < 20%.")
-        print("    - Safeguards: Blacklists password managers, incognito, and banking sites.")
-        print("  • To disable anytime: cephalo screen disable\n")
-
-    elif action == "disable":
-        from cephalo.core.safeguards import SAFEGUARDS_FILE, load_safeguards_config, save_safeguards_config
-        cfg = load_safeguards_config(SAFEGUARDS_FILE)
-        cfg["screen_capture_enabled"] = False
-        save_safeguards_config(cfg, SAFEGUARDS_FILE)
-        print("\n" + "=" * 78)
-        print("  [*] Desktop Screen Memory: DISABLED (Zero Overhead Mode)")
-        print("=" * 78)
-        print("  • Daemon will operate with 0% screen polling and zero background OCR.")
-        print("  • System footprint: ~5.7 MB RAM, 0% CPU.")
-        print("  • To re-enable anytime: cephalo screen enable\n")
+    cmd = ["cephalo", "screen", action]
+    if getattr(args, "force", False):
+        cmd.append("--force")
+    if getattr(args, "json", False):
+        cmd.append("--json")
+    try:
+        subprocess.run(cmd, check=False)
+    except Exception as e:
+        print(f"[-] Error executing cephalo screen: {e}")
 
 
 def cmd_digest(args) -> None:

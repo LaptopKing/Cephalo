@@ -156,6 +156,34 @@ impl ScreenEngine {
         Ok(())
     }
 
+    /// Prunes raw WebP keyframes older than max_age_days to keep storage footprint negligible.
+    pub fn prune_frames(&self, max_age_days: u32) -> std::io::Result<usize> {
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days as i64);
+        let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
+        let mut deleted = 0;
+
+        if let Ok(entries) = fs::read_dir(&self.base_dir) {
+            for entry in entries.flatten() {
+                if let Ok(file_type) = entry.file_type() {
+                    if file_type.is_dir() {
+                        let dir_name = entry.file_name().to_string_lossy().to_string();
+                        if dir_name.len() == 10 && dir_name < cutoff_str {
+                            if let Ok(files) = fs::read_dir(entry.path()) {
+                                for file in files.flatten() {
+                                    let _ = fs::remove_file(file.path());
+                                    deleted += 1;
+                                }
+                            }
+                            let _ = fs::remove_dir(entry.path());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(deleted)
+    }
+
     /// Checks if a window title or process is shielded by safeguards.
     pub fn is_shielded(&self, title: &str, process: &str) -> (bool, Option<String>) {
         if !self.safeguards.enabled {
@@ -444,9 +472,15 @@ impl ScreenEngine {
             };
         }
 
-        // 2. High-churn monitor suppression (htop, top, btop)
-        let lower_title = win.title.to_lowercase();
-        if !force && (lower_title.contains("htop") || lower_title.contains("btop") || lower_title.contains("top")) {
+        // 2. High-churn system monitor suppression (htop, top, btop)
+        let is_system_monitor = {
+            let proc_lower = win.process.to_lowercase();
+            proc_lower == "htop" || proc_lower == "btop" || proc_lower == "top" || proc_lower == "nmon" || proc_lower == "glances"
+                || Regex::new(r"(?i)\b(htop|btop|top|nmon|glances)\b")
+                    .map(|re| re.is_match(&win.title))
+                    .unwrap_or(false)
+        };
+        if !force && is_system_monitor {
             return ScreenCaptureResult {
                 status: "high_churn_suppressed".to_string(),
                 frame_id: None,
@@ -736,5 +770,34 @@ mod tests {
         assert!(ctx.title.is_empty());
         assert!(ctx.process.is_empty());
         assert!(ctx.window_id.is_none());
+    }
+
+    #[test]
+    fn test_prune_frames_cleanup() {
+        let tmp_dir = std::env::temp_dir().join(format!("cephalo_prune_test_{}", std::process::id()));
+        let _ = fs::create_dir_all(&tmp_dir);
+
+        let old_dir = tmp_dir.join("2020-01-01");
+        let _ = fs::create_dir_all(&old_dir);
+        let old_file = old_dir.join("frame-test.webp");
+        let _ = fs::write(&old_file, b"old frame");
+
+        let recent_dir = tmp_dir.join("2099-01-01");
+        let _ = fs::create_dir_all(&recent_dir);
+        let recent_file = recent_dir.join("frame-recent.webp");
+        let _ = fs::write(&recent_file, b"recent frame");
+
+        let engine = ScreenEngine {
+            base_dir: tmp_dir.clone(),
+            safeguards: SafeguardsConfig::default(),
+        };
+
+        let deleted = engine.prune_frames(14).unwrap();
+        assert_eq!(deleted, 1);
+        assert!(!old_file.exists());
+        assert!(!old_dir.exists());
+        assert!(recent_file.exists());
+
+        let _ = fs::remove_dir_all(&tmp_dir);
     }
 }

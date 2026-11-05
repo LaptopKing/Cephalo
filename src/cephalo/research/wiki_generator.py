@@ -1583,10 +1583,23 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
 
         if path == "/api/frames":
             qs = urllib.parse.parse_qs(parsed.query)
-            date_param = qs.get("date", [None])[0]
-            from cephalo.services.screen_recorder import ScreenMemoryEngine
-            engine = ScreenMemoryEngine()
-            frames = engine.get_daily_frames(date_param)
+            date_param = qs.get("date", [None])[0] or datetime.date.today().isoformat()
+            frames = []
+            index_file = DATA_DIR / "frames" / "frame_index.jsonl"
+            if index_file.exists():
+                try:
+                    with open(index_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                try:
+                                    rec = json.loads(line)
+                                    if rec.get("date") == date_param:
+                                        frames.append(rec)
+                                except Exception:
+                                    pass
+                except Exception:
+                    pass
             self.send_response(200)
             self._send_cors()
             self.send_header("Content-Type", "application/json; charset=utf-8")

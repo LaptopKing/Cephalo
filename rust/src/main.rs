@@ -346,6 +346,13 @@ enum ScreenSubcommands {
     Enable,
     /// Disable continuous desktop screen memory capture
     Disable,
+    /// Prune old keyframes older than N days
+    Prune {
+        #[arg(long, default_value_t = 14)]
+        days: u32,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -974,6 +981,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("  • System footprint: ~5.7 MB RAM, 0% CPU.");
                     println!("  • To re-enable anytime: cephalo screen enable");
                     println!("==============================================================================\n");
+                }
+                ScreenSubcommands::Prune { days, json } => {
+                    let deleted = screen.prune_frames(days)?;
+                    if json {
+                        println!("{}", serde_json::json!({
+                            "deleted_frames": deleted,
+                            "days": days,
+                            "status": "success"
+                        }));
+                    } else {
+                        println!("[+] Pruned {} old frame files older than {} days.", deleted, days);
+                    }
                 }
             }
         }

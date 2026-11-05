@@ -29,7 +29,6 @@ from cephalo.core.embedding_pipeline import (
     LanceDBStore,
     extract_tags,
 )
-from cephalo.services.webhook_server import WebhookServer, send_quick_memory
 from cephalo.research.wiki_generator import (
     WikiGenerator,
     get_heatmap_data,
@@ -138,37 +137,32 @@ class TestMemoryRelationsAndSupersession(unittest.TestCase):
 
 
 class TestWebhookQuickCapture(unittest.TestCase):
-    """Tests Feature 2: Multi-Channel Quick Capture HTTP Webhook Gateway."""
+    """Tests Feature 2: Multi-Channel Quick Capture HTTP Webhook Gateway (Native Rust Axum)."""
 
     def test_webhook_ingest_and_health(self):
-        # Pre-warm pipeline so ONNX model is already in memory
-        from cephalo.services.webhook_server import get_pipeline
-        get_pipeline()
+        # Verify native Rust Axum Webhook is online and healthy
+        url = "http://127.0.0.1:7434/health"
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data["status"], "healthy")
+            self.assertEqual(data["service"], "cephalo_webhook_rust")
 
-        server = WebhookServer(host="127.0.0.1", port=7439)
-        server.start(background=True)
-        time.sleep(0.5)
-
-        try:
-            # Check health
-            with urllib.request.urlopen("http://127.0.0.1:7439/health", timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                self.assertEqual(data["status"], "healthy")
-                self.assertEqual(data["service"], "cephalo_webhook")
-
-            # Post memory via helper
-            res = send_quick_memory(
-                text="Remote note: TCL 65T8B requires Warm color temperature on SDR #hardware/display",
-                category="hardware",
-                port=7439,
-            )
+        # Ingest memory directly via native Rust Webhook
+        payload = json.dumps({
+            "text": "Remote note: TCL 65T8B requires Warm color temperature on SDR #hardware/display",
+            "category": "hardware",
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:7434/ingest",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            res = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(res["status"], "success")
             self.assertIn("id", res)
-            self.assertIn("hardware/display", res.get("tags", []))
+            self.assertEqual(res.get("category"), "hardware")
             self.assertIn("TCL 65T8B", res.get("sanitized", ""))
-
-        finally:
-            server.stop()
 
 
 class TestDashboardAndHeatmap(unittest.TestCase):

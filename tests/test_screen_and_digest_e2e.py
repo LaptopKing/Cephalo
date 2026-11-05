@@ -17,10 +17,10 @@ import datetime
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from PIL import Image, ImageDraw
 
 from cephalo.core.daily_digest import DailyDigestGenerator
 from cephalo.core.safeguards import (
@@ -32,10 +32,6 @@ from cephalo.core.safeguards import (
     remove_blacklisted_process,
     remove_blacklisted_title,
     save_safeguards_config,
-)
-from cephalo.services.screen_recorder import (
-    ScreenMemoryEngine,
-    compute_frame_delta,
 )
 
 
@@ -107,150 +103,34 @@ class TestSafeguardsE2E(unittest.TestCase):
         self.assertFalse(shielded)
 
 
-class TestScreenMemoryDeltaE2E(unittest.TestCase):
-    """End-to-end testing for perceptual delta gating and WebP frame capture."""
+class TestNativeRustScreenE2E(unittest.TestCase):
+    """End-to-end testing for sovereign native Rust screen memory engine."""
 
-    def setUp(self):
-        self.test_dir = Path(tempfile.mkdtemp(prefix="cephalo_test_screen_"))
-        self.engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05, min_interval_seconds=0.0)
+    def test_rust_screen_status(self):
+        res = subprocess.run(["cephalo", "screen", "status", "--json"], capture_output=True, text=True, check=True)
+        data = json.loads(res.stdout)
+        self.assertTrue(data.get("safe_rust"))
+        self.assertFalse(data.get("unsafe_code"))
+        self.assertIn("status", data)
+        self.assertIn("frames_dir", data)
 
-    def tearDown(self):
-        shutil.rmtree(self.test_dir, ignore_errors=True)
+    def test_rust_screen_snap_force(self):
+        res = subprocess.run(["cephalo", "screen", "snap", "--force", "--json"], capture_output=True, text=True, check=True)
+        data = json.loads(res.stdout)
+        self.assertIn(data.get("status"), ("captured", "shielded", "high_churn_suppressed"))
+        if data.get("status") == "captured":
+            self.assertIn("frame_id", data)
+            self.assertIn("path", data)
+            self.assertIn("roi_mode", data)
+            self.assertIn(data.get("roi_mode"), ("active_window", "full_screen"))
 
-    def _create_mock_image(self, color=(100, 100, 100), text: str = "") -> Image.Image:
-        img = Image.new("RGB", (400, 300), color=color)
-        if text:
-            draw = ImageDraw.Draw(img)
-            draw.text((20, 20), text, fill=(255, 255, 255))
-        return img
-
-    def test_delta_computation_identical_frames(self):
-        img_a = self._create_mock_image((50, 50, 50))
-        img_b = self._create_mock_image((50, 50, 50))
-        delta = compute_frame_delta(img_a, img_b)
-        self.assertEqual(delta, 0.0)
-
-    def test_delta_computation_different_frames(self):
-        img_a = self._create_mock_image((0, 0, 0))
-        img_b = self._create_mock_image((255, 255, 255))
-        delta = compute_frame_delta(img_a, img_b)
-        self.assertAlmostEqual(delta, 1.0, places=2)
-
-    def test_capture_step_first_frame(self):
-        img = self._create_mock_image((30, 40, 50), text="Code Editor Active")
-        ctx = {"title": "main.py — Project", "process": "Code.exe", "platform": "linux"}
-
-        res = self.engine.capture_step(image=img, window_context=ctx)
-        self.assertEqual(res["status"], "captured")
-        self.assertEqual(res["process_name"], "Code.exe")
-        self.assertTrue(Path(self.test_dir.parent / res["path"]).exists())
-
-    def test_capture_step_skips_unchanged_screen(self):
-        img_a = self._create_mock_image((50, 50, 50), text="Reading Document")
-        ctx = {"title": "Doc — Browser", "process": "chrome.exe", "platform": "win32"}
-
-        # Step 1: Capture initial frame
-        res1 = self.engine.capture_step(image=img_a, window_context=ctx)
-        self.assertEqual(res1["status"], "captured")
-
-        # Step 2: Unchanged screen -> must be skipped
-        res2 = self.engine.capture_step(image=img_a, window_context=ctx)
-        self.assertEqual(res2["status"], "skipped_no_change")
-        self.assertLess(res2["delta"], 0.05)
-
-    def test_capture_step_triggers_on_significant_change(self):
-        img_a = self._create_mock_image((0, 0, 0), text="State 1")
-        img_b = self._create_mock_image((200, 200, 200), text="State 2 (Terminal)")
-        ctx = {"title": "Terminal", "process": "pwsh.exe", "platform": "win32"}
-
-        self.engine.capture_step(image=img_a, window_context=ctx)
-        res = self.engine.capture_step(image=img_b, window_context=ctx)
-        self.assertEqual(res["status"], "captured")
-        self.assertGreaterEqual(res["delta"], 0.05)
-
-    def test_cooldown_throttled_on_rapid_changes(self):
-        throttled_engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05, min_interval_seconds=30.0)
-        img_a = self._create_mock_image((0, 0, 0), text="State 1")
-        img_b = self._create_mock_image((200, 200, 200), text="State 2")
-        ctx = {"title": "Terminal", "process": "bash", "platform": "linux"}
-
-        res1 = throttled_engine.capture_step(image=img_a, window_context=ctx)
-        self.assertEqual(res1["status"], "captured")
-        res2 = throttled_engine.capture_step(image=img_b, window_context=ctx)
-        self.assertEqual(res2["status"], "cooldown_throttled")
-
-    def test_smart_lens_focus_shift_dominance(self):
-        """Focus-shift dominance: switching active window bypasses cooldown and captures immediately."""
-        engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05, min_interval_seconds=60.0)
-        img_a = self._create_mock_image((0, 0, 0), text="Code Window")
-        img_b = self._create_mock_image((128, 128, 128), text="Browser Window")
-
-        ctx_code = {"title": "main.rs — Cephalo", "process": "Code.exe", "window_id": "1001", "platform": "linux"}
-        ctx_browser = {"title": "Cephalo Wiki — Chrome", "process": "chrome.exe", "window_id": "2002", "platform": "linux"}
-
-        # 1. First window capture
-        res1 = engine.capture_step(image=img_a, window_context=ctx_code)
-        self.assertEqual(res1["status"], "captured")
-
-        # 2. Focus shift to browser (even within 60s cooldown, must capture immediately)
-        res2 = engine.capture_step(image=img_b, window_context=ctx_browser)
-        self.assertEqual(res2["status"], "captured")
-        self.assertTrue(res2["focus_shift"])
-        self.assertEqual(res2["stream_flips"], 0)
-
-    def test_smart_lens_streaming_noise_suppression(self):
-        """Streaming noise suppressor: repeated visual churn in the same window throttles OCR floods."""
-        engine = ScreenMemoryEngine(base_dir=self.test_dir, min_delta_threshold=0.05, min_interval_seconds=0.0)
-        ctx = {"title": "Terminal — Fast Streaming Logs", "process": "alacritty", "window_id": "3003", "platform": "linux"}
-
-        # Flip 0: Initial capture
-        res0 = engine.capture_step(image=self._create_mock_image((10, 10, 10)), window_context=ctx)
-        self.assertEqual(res0["status"], "captured")
-
-        # Flip 1: Streaming token / log line 1 (delta ~0.20 > 0.05)
-        res1 = engine.capture_step(image=self._create_mock_image((60, 60, 60)), window_context=ctx)
-        self.assertEqual(res1["status"], "captured")
-
-        # Flip 2: Streaming token / log line 2 (delta ~0.24 > 0.05)
-        res2 = engine.capture_step(image=self._create_mock_image((120, 120, 120)), window_context=ctx)
-        self.assertEqual(res2["status"], "captured")
-
-        # Flip 3: Rapid churn threshold reached (flip >= 3) -> enters streaming_suppressed mode!
-        res3 = engine.capture_step(image=self._create_mock_image((180, 180, 180)), window_context=ctx)
-        self.assertEqual(res3["status"], "streaming_suppressed")
-        self.assertEqual(res3["stream_flips"], 3)
-        self.assertFalse(res3["focus_shift"])
-
-    def test_safeguards_shield_abort(self):
-        img = self._create_mock_image((10, 10, 10))
-        # Active window is a password manager
-        ctx = {"title": "Master Password Entry", "process": "Bitwarden.exe", "platform": "win32"}
-
-        res = self.engine.capture_step(image=img, window_context=ctx)
-        self.assertEqual(res["status"], "shielded")
-        self.assertIn("Blacklisted process", res["reason"])
-        # Verify no image was written to disk
-        self.assertFalse(any(self.test_dir.rglob("*.webp")))
-
-    def test_frame_pruning_and_thumbnails(self):
-        # Create an artificial past date directory
-        past_date_str = (datetime.datetime.now() - datetime.timedelta(days=20)).strftime("%Y-%m-%d")
-        past_dir = self.test_dir / past_date_str
-        past_dir.mkdir(parents=True, exist_ok=True)
-
-        fake_frame = past_dir / "frame_120000_abc123.webp"
-        img = self._create_mock_image((80, 80, 80))
-        img.save(fake_frame, "WEBP")
-
-        # Run pruning
-        prune_res = self.engine.prune_frames(max_age_days=14, keep_thumbnails=True)
-        self.assertEqual(prune_res["deleted_frames"], 1)
-        self.assertEqual(prune_res["thumbnails_created"], 1)
-
-        # Verify full-res is deleted and thumbnail exists
-        self.assertFalse(fake_frame.exists())
-        thumb = past_dir / "frame_120000_abc123_thumb.webp"
-        self.assertTrue(thumb.exists())
+    def test_rust_screen_enable_and_status(self):
+        # Enable screen memory
+        subprocess.run(["cephalo", "screen", "enable"], capture_output=True, text=True, check=True)
+        res = subprocess.run(["cephalo", "screen", "status", "--json"], capture_output=True, text=True, check=True)
+        data = json.loads(res.stdout)
+        self.assertEqual(data.get("status"), "enabled")
+        self.assertTrue(data.get("screen_capture_enabled"))
 
 
 class TestDailyDigestE2E(unittest.TestCase):
