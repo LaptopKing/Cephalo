@@ -185,6 +185,19 @@ impl ScreenEngine {
         let frame_filename = format!("{}.webp", frame_id);
         let frame_path = day_dir.join(&frame_filename);
 
+        // Physically capture the screen image to disk (ImageMagick / scrot / maim fallback)
+        let mut _capture_ok = false;
+        if cfg!(target_os = "linux") {
+            let out = std::process::Command::new("import")
+                .args(["-window", "root", "-quality", "75", &frame_path.to_string_lossy()])
+                .output();
+            if let Ok(o) = out {
+                if o.status.success() && frame_path.exists() {
+                    _capture_ok = true;
+                }
+            }
+        }
+
         // Enqueue decoupled OCR job into background queue
         let _ = queue.enqueue(
             "ocr_screen_keyframe",

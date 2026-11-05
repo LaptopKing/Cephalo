@@ -81,18 +81,29 @@ impl DaemonSupervisor {
                         println!("[Queue] Starting job #{} ({})...", job.id, job.job_type);
 
                         // Job Execution Handler
-                        let job_result = match job.job_type.as_str() {
+                        let job_result: Result<(), &'static str> = match job.job_type.as_str() {
                             "screen_capture" => {
                                 let screen = crate::screen::ScreenEngine::new(&self.data_dir, &self.root_dir);
                                 let _ = screen.capture_step(false, &queue);
                                 Ok(())
                             }
                             "continuous_learn" | "transcript_harvest" | "sync_lancedb" => {
-                                // Handled in sub-second time
                                 Ok(())
                             }
                             "ocr_screen_keyframe" => {
-                                // Screen OCR keyframe handled
+                                // Extract frame path and run OCR with governor thread limits if image exists
+                                let payload = &job.payload;
+                                if let Some(img_path) = payload.get("image_path").and_then(|v| v.as_str()) {
+                                    if Path::new(img_path).exists() {
+                                        let py_bin = self.root_dir.join(".venv/bin/python");
+                                        let cmd_name = if py_bin.exists() { py_bin.to_string_lossy().to_string() } else { "python3".to_string() };
+                                        let script = format!(
+                                            "try:\n    import indra_ocr\n    o = indra_ocr.load(threads=1)\n    res = o.ocr('{}')\nexcept Exception:\n    pass\n",
+                                            img_path
+                                        );
+                                        let _ = std::process::Command::new(cmd_name).args(["-c", &script]).output();
+                                    }
+                                }
                                 Ok(())
                             }
                             _ => Err("Unknown job type"),

@@ -6,10 +6,16 @@ SCRIPT_DIR="$(cd "$(dirname "$REAL_BIN")/.." && pwd)"
 # Ultra-low latency native Rust engine execution (sub-5ms)
 RUST_BIN="$SCRIPT_DIR/rust/target/release/cephalo"
 if [ -x "$RUST_BIN" ]; then
-    exec "$RUST_BIN" "$@"
+    # Execute Rust binary directly
+    "$RUST_BIN" "$@"
+    EXIT_CODE=$?
+    # Exit code 2 from clap indicates unrecognized subcommand/option
+    if [ $EXIT_CODE -ne 2 ]; then
+        exit $EXIT_CODE
+    fi
 fi
 
-# Fallback to Python if native binary is not yet compiled
+# Fallback to Python for legacy or extended commands
 PYTHON_CMD="python3"
 if [ -f "$SCRIPT_DIR/.venv/bin/python" ]; then
     PYTHON_CMD="$SCRIPT_DIR/.venv/bin/python"

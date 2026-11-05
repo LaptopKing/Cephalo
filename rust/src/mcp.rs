@@ -12,6 +12,8 @@ use crate::task_ledger::TaskLedger;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct JsonRpcRequest {
@@ -38,6 +40,7 @@ pub struct McpServer<'a> {
     ledger: &'a TaskLedger,
     queue: &'a JobQueue,
     governor: &'a mut ResourceGovernor,
+    root_dir: PathBuf,
 }
 
 impl<'a> McpServer<'a> {
@@ -48,6 +51,7 @@ impl<'a> McpServer<'a> {
         ledger: &'a TaskLedger,
         queue: &'a JobQueue,
         governor: &'a mut ResourceGovernor,
+        root_dir: &Path,
     ) -> Self {
         Self {
             storage,
@@ -56,6 +60,7 @@ impl<'a> McpServer<'a> {
             ledger,
             queue,
             governor,
+            root_dir: root_dir.to_path_buf(),
         }
     }
 
@@ -78,6 +83,39 @@ impl<'a> McpServer<'a> {
             }
         }
         Ok(())
+    }
+
+    fn run_python_helper(&self, args: &[&str]) -> Value {
+        let py_bin = self.root_dir.join(".venv/bin/python");
+        let cmd_name = if py_bin.exists() {
+            py_bin.to_string_lossy().to_string()
+        } else {
+            "python3".to_string()
+        };
+
+        let brain_py = self.root_dir.join("brain.py");
+        let mut full_args = vec![brain_py.to_string_lossy().to_string()];
+        for a in args {
+            full_args.push(a.to_string());
+        }
+
+        let output = Command::new(cmd_name).args(&full_args).output();
+
+        match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if let Ok(val) = serde_json::from_str::<Value>(&stdout) {
+                    val
+                } else {
+                    json!({
+                        "status": if out.status.success() { "success" } else { "error" },
+                        "output": stdout,
+                        "stderr": String::from_utf8_lossy(&out.stderr).trim().to_string()
+                    })
+                }
+            }
+            Err(e) => json!({ "status": "error", "message": e.to_string() }),
+        }
     }
 
     fn handle_request(&mut self, req: JsonRpcRequest) -> JsonRpcResponse {
@@ -166,6 +204,77 @@ impl<'a> McpServer<'a> {
                             }
                         },
                         {
+                            "name": "cephalo_auto_create_specialty",
+                            "description": "Autonomously synthesizes and registers a new specialty module for any novel technology or framework.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "topic": { "type": "string", "description": "Technology or methodology name" },
+                                    "project": { "type": "string", "description": "Target project namespace (default 'global')" }
+                                },
+                                "required": ["topic"]
+                            }
+                        },
+                        {
+                            "name": "cephalo_continuous_learn",
+                            "description": "Triggers an autonomous continuous learning cycle across all project workspaces.",
+                            "inputSchema": { "type": "object", "properties": {} }
+                        },
+                        {
+                            "name": "cephalo_learning_status",
+                            "description": "Queries current continuous learning state, tracked projects, hardware governor metrics, and queue status.",
+                            "inputSchema": { "type": "object", "properties": {} }
+                        },
+                        {
+                            "name": "cephalo_deep_research",
+                            "description": "Executes autonomous deep research on any topic using first principles, industry standards, and top GitHub repos.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "topic": { "type": "string", "description": "Technology, domain, or methodology to research" },
+                                    "project": { "type": "string", "description": "Target project namespace (default 'global')" },
+                                    "create_specialty": { "type": "boolean", "description": "If true, registers as a Cephalo specialty" }
+                                },
+                                "required": ["topic"]
+                            }
+                        },
+                        {
+                            "name": "cephalo_web_search",
+                            "description": "Performs Google-style web search with an AI Quick Summary, organic web results, and social/discussion blocks.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "query": { "type": "string", "description": "Natural language search query" },
+                                    "limit": { "type": "integer", "description": "Max organic search results (default 5)" }
+                                },
+                                "required": ["query"]
+                            }
+                        },
+                        {
+                            "name": "cephalo_web_fetch",
+                            "description": "Extracts clean readable markdown/text from a webpage URL.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "url": { "type": "string", "description": "Target webpage URL to crawl" },
+                                    "max_chars": { "type": "integer", "description": "Maximum characters to extract (default 15000)" }
+                                },
+                                "required": ["url"]
+                            }
+                        },
+                        {
+                            "name": "cephalo_run_sandboxed",
+                            "description": "Safely executes code or scripts in an isolated sandbox with resource governor limits.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "code": { "type": "string", "description": "Code to execute" },
+                                    "language": { "type": "string", "description": "Execution language runtime (python, bash, javascript)" }
+                                },
+                                "required": ["code"]
+                            }
+                        },
+                        {
                             "name": "cephalo_task_checkpoint",
                             "description": "Checkpoints subagent state in the task ledger for crash resilience.",
                             "inputSchema": {
@@ -188,6 +297,27 @@ impl<'a> McpServer<'a> {
                                     "task_id": { "type": "string" }
                                 },
                                 "required": ["task_id"]
+                            }
+                        },
+                        {
+                            "name": "cephalo_task_list",
+                            "description": "Lists subagent tasks, current step status, paused reasons, and token usage.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "limit": { "type": "integer", "description": "Max tasks to list (default 20)" }
+                                }
+                            }
+                        },
+                        {
+                            "name": "cephalo_migrate",
+                            "description": "Universal migration engine for Cephalo and AI agent harnesses (export, restore, inspect, list).",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "action": { "type": "string", "description": "export, restore, inspect, or list (default: export)" },
+                                    "scope": { "type": "string", "description": "settings or all (default: settings)" }
+                                }
                             }
                         }
                     ]
@@ -243,6 +373,75 @@ impl<'a> McpServer<'a> {
                             None => json!({ "error": format!("Specialty '{}' not found in '{}'", slug, proj) }),
                         }
                     }
+                    "cephalo_auto_create_specialty" => {
+                        let topic = args.get("topic").and_then(|v| v.as_str()).unwrap_or("");
+                        let proj = args.get("project").and_then(|v| v.as_str()).unwrap_or("global");
+                        let slug = topic.to_lowercase().replace(' ', "-");
+                        let title = topic.to_string();
+                        let initial_content = format!(
+                            "# {}\n\n## Overview\nAutonomous specialty module for {}.\n\n## Core Principles\n- Verified engineering discipline\n- Anti-AI-slop craftsmanship\n",
+                            title, topic
+                        );
+                        match self.specialties.create_specialty(proj, &slug, &title, &initial_content) {
+                            Ok(p) => json!({ "status": "success", "action": "created", "path": p.to_string_lossy(), "topic": topic }),
+                            Err(e) => json!({ "status": "error", "message": e.to_string() }),
+                        }
+                    }
+                    "cephalo_continuous_learn" => {
+                        let _ = self.queue.enqueue("continuous_learn", Some(json!({"source": "mcp"})), 3, true);
+                        json!({
+                            "status": "success",
+                            "message": "Continuous learning cycle scheduled in Cephalo work queue."
+                        })
+                    }
+                    "cephalo_learning_status" => {
+                        let metrics = self.governor.inspect_resources();
+                        let q_status = self.queue.get_status().unwrap_or(crate::queue::QueueStatus {
+                            pending: 0,
+                            running: 0,
+                            completed: 0,
+                            failed: 0,
+                            current_running_job: None,
+                        });
+                        json!({
+                            "status": "active",
+                            "governor_mode": metrics.mode.as_str(),
+                            "safe_concurrency": metrics.safe_concurrency,
+                            "on_battery": metrics.on_battery,
+                            "battery_percent": metrics.battery_percent,
+                            "cpu_percent": metrics.cpu_percent,
+                            "queue": q_status
+                        })
+                    }
+                    "cephalo_deep_research" => {
+                        let topic = args.get("topic").and_then(|v| v.as_str()).unwrap_or("");
+                        let proj = args.get("project").and_then(|v| v.as_str()).unwrap_or("global");
+                        self.run_python_helper(&["research", topic, "--project", proj, "--json"])
+                    }
+                    "cephalo_web_search" => {
+                        let q = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                        self.run_python_helper(&["web", q, "--json"])
+                    }
+                    "cephalo_web_fetch" => {
+                        let url = args.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                        self.run_python_helper(&["fetch", url, "--json"])
+                    }
+                    "cephalo_run_sandboxed" => {
+                        let code = args.get("code").and_then(|v| v.as_str()).unwrap_or("");
+                        let lang = args.get("language").and_then(|v| v.as_str()).unwrap_or("python");
+                        let output = Command::new(if lang == "bash" { "bash" } else { "python3" })
+                            .args(["-c", code])
+                            .output();
+                        match output {
+                            Ok(out) => json!({
+                                "status": if out.status.success() { "success" } else { "failed" },
+                                "stdout": String::from_utf8_lossy(&out.stdout),
+                                "stderr": String::from_utf8_lossy(&out.stderr),
+                                "exit_code": out.status.code()
+                            }),
+                            Err(e) => json!({ "status": "error", "message": e.to_string() }),
+                        }
+                    }
                     "cephalo_task_checkpoint" => {
                         let tid = args.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
                         let step = args.get("step_index").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
@@ -259,6 +458,18 @@ impl<'a> McpServer<'a> {
                             Ok(Some(brief)) => json!({ "status": "resumed", "brief": brief }),
                             _ => json!({ "status": "not_found", "task_id": tid }),
                         }
+                    }
+                    "cephalo_task_list" => {
+                        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+                        match self.ledger.list_tasks(limit) {
+                            Ok(tasks) => json!({ "status": "success", "tasks": tasks, "count": tasks.len() }),
+                            Err(e) => json!({ "status": "error", "message": e.to_string() }),
+                        }
+                    }
+                    "cephalo_migrate" => {
+                        let act = args.get("action").and_then(|v| v.as_str()).unwrap_or("export");
+                        let scp = args.get("scope").and_then(|v| v.as_str()).unwrap_or("settings");
+                        self.run_python_helper(&["migrate", act, "--scope", scp, "--json"])
                     }
                     _ => json!({ "error": format!("Unknown tool: {}", tool_name) }),
                 };
