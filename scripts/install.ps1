@@ -400,8 +400,48 @@ if (Test-Path (Split-Path $WindsurfConfig -Parent)) {
     Write-Host "      Configured Cephalo MCP server as default in Windsurf." -ForegroundColor Green
 }
 
-# 7. Verify Installation & Database Health
-Write-Host "[6/6] Verifying Cephalo..." -ForegroundColor Yellow
+# 7. Screen Memory & Visual Timeline Configuration
+Write-Host "[6/7] Configuring Desktop Screen Memory & Safeguards..." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "==============================================================================" -ForegroundColor Cyan
+Write-Host "  📸 Optional Feature: Desktop Screen Memory & Visual Timeline" -ForegroundColor Cyan
+Write-Host "==============================================================================" -ForegroundColor Cyan
+Write-Host "  • How it operates:" -ForegroundColor Gray
+Write-Host "    Periodically captures desktop keyframes on significant visual shifts," -ForegroundColor Gray
+Write-Host "    computes a 64-bit dHash perceptual difference (100% safe Rust, 0 unsafe)," -ForegroundColor Gray
+Write-Host "    and enqueues background OCR to power the 24-hour DeepWiki visual timeline." -ForegroundColor Gray
+Write-Host "  • Resource Profile:" -ForegroundColor Gray
+Write-Host "    - CPU: ~15-20% CPU for ~2s only during background OCR jobs." -ForegroundColor Gray
+Write-Host "    - Disk: ~50-80 KB WebP keyframe per unique screen state." -ForegroundColor Gray
+Write-Host "    - Battery: Automatically throttles or pauses when battery < 20%." -ForegroundColor Gray
+Write-Host "    - Privacy: Shielded against password managers, incognito, and banking sites." -ForegroundColor Gray
+Write-Host "==============================================================================" -ForegroundColor Cyan
+
+$EnableScreen = $false
+if ($env:CEPHALO_ENABLE_SCREEN -eq "1") {
+    $EnableScreen = $true
+} elseif ([Environment]::UserInteractive) {
+    $choice = Read-Host "Would you like to enable continuous Desktop Screen Memory? [y/N] (Default: No)"
+    if ($choice -match "^[yY]") {
+        $EnableScreen = $true
+    }
+}
+
+$CephaloBin = Join-Path $TargetDir "bin\cephalo.cmd"
+if (-not (Test-Path $CephaloBin)) {
+    $CephaloBin = Join-Path $TargetDir "rust\target\release\cephalo.exe"
+}
+
+if ($EnableScreen) {
+    if (Test-Path $CephaloBin) { & $CephaloBin screen enable }
+    Write-Host "      Desktop Screen Memory enabled." -ForegroundColor Green
+} else {
+    if (Test-Path $CephaloBin) { & $CephaloBin screen disable }
+    Write-Host "      Desktop Screen Memory disabled (Zero-overhead mode). You can enable anytime via: cephalo screen enable" -ForegroundColor Yellow
+}
+
+# 8. Verify Installation & Database Health
+Write-Host "[7/7] Verifying Cephalo..." -ForegroundColor Yellow
 & $PythonCmd (Join-Path $TargetDir "brain.py") status
 
 Write-Host ""

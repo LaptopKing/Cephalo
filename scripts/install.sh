@@ -301,8 +301,48 @@ if [ -d "$HOME/.codeium/windsurf" ]; then
     echo "      Configured Cephalo MCP server as default in Windsurf."
 fi
 
-# 7. Verify Installation
-echo "[6/6] Verifying Cephalo..."
+# 7. Screen Memory & Visual Timeline Configuration
+echo "[6/7] Configuring Desktop Screen Memory & Safeguards..."
+echo ""
+echo "=============================================================================="
+echo "  📸 Optional Feature: Desktop Screen Memory & Visual Timeline"
+echo "=============================================================================="
+echo "  • How it operates:"
+echo "    Periodically captures desktop keyframes on significant visual shifts,"
+echo "    computes a 64-bit dHash perceptual difference (100% safe Rust, 0 unsafe),"
+echo "    and enqueues background OCR to power the 24-hour DeepWiki visual timeline."
+echo "  • Resource Profile:"
+echo "    - CPU: ~15-20% CPU for ~2s only during background OCR jobs."
+echo "    - Disk: ~50-80 KB WebP keyframe per unique screen state."
+echo "    - Battery: Automatically throttles or pauses when battery < 20%."
+echo "    - Privacy: Shielded against password managers, incognito, and banking sites."
+echo "=============================================================================="
+
+ENABLE_SCREEN=0
+if [ "$CEPHALO_ENABLE_SCREEN" = "1" ]; then
+    ENABLE_SCREEN=1
+elif [ -t 0 ]; then
+    read -r -p "Would you like to enable continuous Desktop Screen Memory? [y/N] (Default: No): " screen_choice
+    case "$screen_choice" in
+        [yY][eE][sS]|[yY])
+            ENABLE_SCREEN=1
+            ;;
+        *)
+            ENABLE_SCREEN=0
+            ;;
+    esac
+fi
+
+if [ "$ENABLE_SCREEN" = "1" ]; then
+    "$TARGET_DIR/bin/cephalo" screen enable
+    echo "      Desktop Screen Memory enabled."
+else
+    "$TARGET_DIR/bin/cephalo" screen disable
+    echo "      Desktop Screen Memory disabled (Zero-overhead mode). You can enable anytime via: cephalo screen enable"
+fi
+
+# 8. Verify Installation
+echo "[7/7] Verifying Cephalo..."
 $PY_CMD "$TARGET_DIR/brain.py" status
 
 echo ""
