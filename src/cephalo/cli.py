@@ -137,9 +137,12 @@ def cmd_profile(args) -> None:
         matched = sections[matched_idx]
         old_content = matched["content"]
 
+        from cephalo.core.embedding_pipeline import Sanitizer
+        sanitizer = Sanitizer()
+
         if replace_text:
             header_prefix = f"## {matched['title']}"
-            rep = replace_text.strip()
+            rep = sanitizer.sanitize(replace_text.strip())
             if not rep.startswith("## "):
                 body = f"{header_prefix}\n\n{rep}"
             else:
@@ -149,7 +152,7 @@ def cmd_profile(args) -> None:
             new_sec_text = body
             action_desc = "replaced"
         else:
-            addition = append_text.strip()
+            addition = sanitizer.sanitize(append_text.strip())
             from cephalo.core.preference_reconciler import PreferenceReconciler
             new_sec_text, was_replaced, old_bullet = PreferenceReconciler.reconcile_markdown_section(
                 old_content, addition
@@ -749,9 +752,11 @@ def _handle_specialty_create(mgr, args) -> None:
             repos = json.loads(args.repos)
         except Exception:
             pass
-    takeaways = [t.strip() for t in args.takeaways.split(";")] if getattr(args, "takeaways", None) else []
-    prefs = [p.strip() for p in args.preferences.split(",")] if getattr(args, "preferences", None) else []
-    fund = args.fundamentals or f"Core verified fundamentals for {args.name}."
+    from cephalo.core.embedding_pipeline import Sanitizer
+    sanitizer = Sanitizer()
+    takeaways = [sanitizer.sanitize(t.strip()) for t in args.takeaways.split(";")] if getattr(args, "takeaways", None) else []
+    prefs = [sanitizer.sanitize(p.strip()) for p in args.preferences.split(",")] if getattr(args, "preferences", None) else []
+    fund = sanitizer.sanitize(args.fundamentals) if args.fundamentals else f"Core verified fundamentals for {args.name}."
 
     result = mgr.create_specialty(
         name=args.name,
@@ -771,11 +776,15 @@ def _handle_specialty_create(mgr, args) -> None:
 
 
 def _handle_specialty_edit(mgr, args) -> None:
+    from cephalo.core.embedding_pipeline import Sanitizer
+    sanitizer = Sanitizer()
+    fund = sanitizer.sanitize(args.fundamentals) if getattr(args, "fundamentals", None) else None
+    notes = sanitizer.sanitize(args.notes) if getattr(args, "notes", None) else None
     res = mgr.edit_specialty(
         name=args.name,
         project=args.project,
-        fundamentals=getattr(args, "fundamentals", None),
-        notes=getattr(args, "notes", None),
+        fundamentals=fund,
+        notes=notes,
     )
     if getattr(args, "json", False):
         print(json.dumps(res, indent=2, ensure_ascii=False))
@@ -1427,7 +1436,11 @@ def cmd_webhook(args) -> None:
     host = getattr(args, "host", "127.0.0.1")
 
     if action == "serve":
-        cmd = ["cephalo", "webhook", "serve", "--port", str(port)]
+        rust_bin = ROOT_DIR / "rust" / "target" / "release" / ("cephalo.exe" if sys.platform == "win32" else "cephalo")
+        if not rust_bin.exists():
+            print("[-] Cephalo native Rust engine binary is not built. Run 'cd rust && cargo build --release' to enable the high-performance webhook gateway.")
+            return
+        cmd = [str(rust_bin), "webhook", "serve", "--port", str(port)]
         if getattr(args, "token", None):
             cmd.extend(["--token", args.token])
         subprocess.run(cmd, check=False)
@@ -1600,7 +1613,11 @@ def cmd_safeguard(args) -> None:
 def cmd_screen(args) -> None:
     """Manages desktop screen memory and visual timeline via sovereign native Rust engine."""
     action = getattr(args, "screen_action", None) or "status"
-    cmd = ["cephalo", "screen", action]
+    rust_bin = ROOT_DIR / "rust" / "target" / "release" / ("cephalo.exe" if sys.platform == "win32" else "cephalo")
+    if not rust_bin.exists():
+        print("[-] Cephalo native Rust engine binary is not built. Run 'cd rust && cargo build --release' to enable desktop screen capture.")
+        return
+    cmd = [str(rust_bin), "screen", action]
     if getattr(args, "force", False):
         cmd.append("--force")
     if getattr(args, "json", False):
@@ -1841,11 +1858,12 @@ def cmd_ocr(args):
     if getattr(args, "record", False):
         from brain import get_pipeline
         pipeline = get_pipeline()
-        pipeline.record(
-            text=combined,
+        pipeline.ingest_prompt(
+            raw_text=combined,
             category=args.category,
             source=f"ocr:{file_path.name}",
-            tags=["ocr", file_path.suffix.lstrip(".")]
+            tags=["ocr", file_path.suffix.lstrip(".")],
+            sync_to_jsonl=True,
         )
         print(f"Recorded OCR content into LanceDB under category '{args.category}'.")
 
@@ -1998,12 +2016,14 @@ def cmd_migrate(args):
 
         preset = getattr(args, "preset", 6)
         fast = getattr(args, "fast", False)
+        inc_secrets = getattr(args, "include_secrets", False)
 
         res = manager.create_migration(
             scope=scope,
             output_path=out_path,
             compression_format=fmt,
             include_build_artifacts=inc_build,
+            include_secrets=inc_secrets,
             preset=preset,
             fast=fast,
         )
@@ -2030,6 +2050,260 @@ def cmd_migrate(args):
         print(f"[-] Migration export failed: {e}")
         if getattr(args, "json", False):
             print(json.dumps({"status": "error", "error": str(e)}, indent=2))
+
+
+def cmd_update(args):
+    """Manage Cephalo auto-updates, releases, and background synchronization."""
+    from cephalo.services.updater import (
+        check_for_updates,
+        apply_update_background,
+        execute_update_sync,
+        load_update_state,
+        save_update_state,
+        acquire_update_lock,
+        release_update_lock,
+        is_update_locked,
+    )
+
+    action = getattr(args, "update_action", None)
+    is_json = getattr(args, "json", False)
+
+    if action == "check":
+        force = getattr(args, "force", False)
+        res = check_for_updates(force=force)
+        if is_json:
+            print(json.dumps(res, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 64)
+            print("  ⚡ CEPHALO RELEASE TRACKER")
+            print("=" * 64)
+            print(f"  Current Version:  {res.get('current_version')}")
+            print(f"  Latest Release:   {res.get('latest_version')}")
+            print(f"  Update Available: {'YES (Ready to update)' if res.get('update_available') else 'NO (Up to date)'}")
+            print(f"  Last Checked:     {res.get('checked_at')}")
+            if res.get('release_url'):
+                print(f"  Release URL:      {res.get('release_url')}")
+            print("=" * 64)
+
+    elif action == "apply" or action == "run":
+        target = getattr(args, "target", None)
+        sync_mode = getattr(args, "sync", False)
+
+        if sync_mode:
+            if not acquire_update_lock():
+                print("[-] Error: Another update is currently in progress.")
+                return
+            try:
+                ok, msg = execute_update_sync(target)
+                print(f"[+] {msg}")
+            finally:
+                release_update_lock()
+        else:
+            res = apply_update_background(target)
+            if is_json:
+                print(json.dumps(res, indent=2, ensure_ascii=False))
+            else:
+                print(f"[+] {res['message']}")
+                print(f"    Follow live logs: tail -f {res.get('log_file')}")
+
+    elif action == "policy":
+        new_pol = getattr(args, "policy_mode", None)
+        if new_pol:
+            state = load_update_state()
+            state["policy"] = new_pol
+            save_update_state(state)
+            print(f"[+] Cephalo background auto-update policy set to: {new_pol}")
+        else:
+            state = load_update_state()
+            print(f"Current update policy: {state.get('policy', 'auto')}")
+
+    else:
+        # Status / default
+        state = load_update_state()
+        if is_json:
+            print(json.dumps(state, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 64)
+            print("  ⚡ CEPHALO AUTO-UPDATE & RELEASE STATUS")
+            print("=" * 64)
+            print(f"  Current Version:      {state.get('current_version')}")
+            print(f"  Latest Known Release: {state.get('latest_version')}")
+            print(f"  Update Available:     {state.get('update_available')}")
+            print(f"  Update Policy:        {state.get('policy', 'auto')} (Options: auto, notify, off)")
+            print(f"  Last Checked:         {state.get('last_checked_at') or 'Never'}")
+            print(f"  Last Update Applied:  {state.get('last_update_applied_at') or 'None'}")
+            print(f"  Update Lock Active:   {is_update_locked()}")
+            print("=" * 64)
+            print("Commands:")
+            print("  cephalo update check        Check for newer release on GitHub")
+            print("  cephalo update apply        Apply update in background")
+            print("  cephalo update policy auto  Set background update policy")
+            print("=" * 64)
+
+
+def cmd_integrate(args):
+    """Seamlessly integrate Cephalo into shell, editor, or agent environments."""
+    from cephalo.services.integrator import (
+        run_all_integrations,
+        integrate_shells,
+        integrate_antigravity,
+        integrate_claude,
+        integrate_cursor,
+        integrate_windsurf,
+        integrate_vscode_cline_roo,
+        integrate_project,
+        inspect_status,
+    )
+
+    action = getattr(args, "integrate_action", None) or "all"
+    is_json = getattr(args, "json", False)
+
+    if action == "status" or action == "doctor" or getattr(args, "command", "") == "doctor":
+        status = inspect_status()
+        if is_json:
+            print(json.dumps(status, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 64)
+            print("  🩺 CEPHALO ECOSYSTEM INTEGRATION DOCTOR")
+            print("=" * 64)
+            print(f"  Cephalo Root:     {status['cephalo_dir']}")
+            print(f"  Python Runtime:   {status['python_exe']}")
+            print("-" * 64)
+            print("  Shells:")
+            for sh, present in status['shells'].items():
+                print(f"    • {sh:16}: {'✓ Present' if present else '- Not detected'}")
+            print("-" * 64)
+            print("  AI Agent Harnesses & IDEs:")
+            print(f"    • Antigravity / Gemini : {'✓ Configured' if status['antigravity']['plugin_installed'] else '- Not detected'}")
+            print(f"    • Claude Code          : {'✓ Detected' if status['claude']['detected'] else '- Not detected'}")
+            print(f"    • Cursor IDE           : {'✓ Detected' if status['cursor']['detected'] else '- Not detected'}")
+            print(f"    • Windsurf Cascade     : {'✓ Detected' if status['windsurf']['detected'] else '- Not detected'}")
+            print(f"    • Herdr                : {'✓ Detected' if status['herdr']['detected'] else '- Not detected'}")
+            print("=" * 64)
+        return
+
+    if action == "shells":
+        res = integrate_shells()
+    elif action == "antigravity":
+        res = integrate_antigravity()
+    elif action == "claude":
+        res = integrate_claude()
+    elif action == "cursor":
+        res = integrate_cursor()
+    elif action == "windsurf":
+        res = integrate_windsurf()
+    elif action == "vscode" or action == "cline":
+        res = integrate_vscode_cline_roo()
+    elif action == "project":
+        path = Path(getattr(args, "path", ".") or ".")
+        res = integrate_project(path)
+    else:
+        res = run_all_integrations()
+
+    if is_json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+    else:
+        print("=" * 64)
+        print("  🧩 CEPHALO ECOSYSTEM INTEGRATION APPLIED")
+        print("=" * 64)
+        print("  Non-destructive integration complete. Zero existing configs overwritten.")
+        print("=" * 64)
+
+
+def cmd_gatekeeper(args):
+    """Deterministic Tsetlin Machine Propositional Intent & Preference Rule Gatekeeper."""
+    from cephalo.learning.tsetlin_gatekeeper import get_gatekeeper, TsetlinGatekeeper, INTENT_CATEGORIES
+
+    action = getattr(args, "gatekeeper_action", None)
+    if not action:
+        if getattr(args, "text", None):
+            action = "route"
+        else:
+            action = "rules"
+
+    gk = get_gatekeeper()
+
+    if action == "route":
+        text = getattr(args, "text", "")
+        if not text:
+            print("Error: Prompt or text to route is required.")
+            return
+
+        res = gk.route(text)
+        if getattr(args, "json", False):
+            print(json.dumps(res.to_dict(), indent=2, ensure_ascii=False))
+        else:
+            print("=" * 68)
+            print("  ⚡ TSETLIN MACHINE INTENT GATEKEEPER")
+            print("=" * 68)
+            print(f"  Input:             \"{res.text}\"")
+            print(f"  Predicted Intent:  {res.category}")
+            print(f"  Confidence:        {res.confidence:.2f} (Vote Margin: {res.vote_margin:+d})")
+            print(f"  Triggered Rule:    {res.triggered_clause or 'None'}")
+            print(f"  Inference Time:    {res.execution_time_ms:.3f} ms")
+            print("-" * 68)
+            print("  Category Vote Breakdown:")
+            sorted_votes = sorted(res.votes.items(), key=lambda x: -x[1])
+            for cat, vote in sorted_votes:
+                marker = "→" if cat == res.category else " "
+                print(f"    {marker} {cat:24} : {vote:+d}")
+            print("=" * 68)
+
+    elif action == "rules":
+        category_filter = getattr(args, "category", None) or getattr(args, "class_name", None)
+        limit = getattr(args, "limit", 8) or 8
+        rules = gk.rules(class_name=category_filter, limit_per_class=limit)
+
+        if getattr(args, "json", False):
+            print(json.dumps(rules, indent=2, ensure_ascii=False))
+        else:
+            print("=" * 68)
+            print("  📜 LEARNED PROPOSITIONAL BOOLEAN RULES")
+            print("=" * 68)
+            for cat, r_list in rules.items():
+                print(f"\n  [{cat.upper()}] ({len(r_list)} rules):")
+                if not r_list:
+                    print("    (no active rules)")
+                for r in r_list:
+                    print(f"    • {r}")
+            print("\n" + "=" * 68)
+
+    elif action == "train":
+        epochs = getattr(args, "epochs", 40) or 40
+        seed_only = getattr(args, "seed_only", False)
+        print(f"🧠 Training Tsetlin Machine Gatekeeper (epochs={epochs}, seed_only={seed_only})...")
+        stats = gk.train(epochs=epochs, use_cephalo_memory=not seed_only, save_on_complete=True)
+
+        if getattr(args, "json", False):
+            print(json.dumps(stats, indent=2, ensure_ascii=False))
+        else:
+            print("✓ Training Complete!")
+            print(f"  • Training Samples:  {stats['samples_count']}")
+            print(f"  • Vocabulary Size:   {stats['vocabulary_size']} tokens")
+            print(f"  • Learned Clauses:   {stats['clause_count']}")
+            print(f"  • Accuracy:          {stats['accuracy']*100:.1f}%")
+            print(f"  • Training Time:     {stats['train_duration_sec']}s")
+            print(f"  • Saved Path:        {gk.model_path}")
+
+    elif action == "cinema" or action == "evaluate":
+        item = getattr(args, "text", "")
+        if not item:
+            print("Error: Movie description or item to evaluate is required.")
+            return
+
+        res = gk.evaluate_cinema(item)
+        if getattr(args, "json", False):
+            print(json.dumps(res.to_dict(), indent=2, ensure_ascii=False))
+        else:
+            print("=" * 68)
+            print("  🎬 CINEMA PREFERENCE INDUCTION (TCL 65T8B 4K DISPLAY)")
+            print("=" * 68)
+            print(f"  Item:             \"{res.item}\"")
+            print(f"  Verdict:          {res.verdict}")
+            print(f"  Confidence:       {res.confidence:.2f} (Score: {res.score:+d})")
+            print(f"  Triggered Rule:   {res.triggered_rule or 'None'}")
+            print("=" * 68)
+
 
 def main():
     maybe_auto_learn()
@@ -2382,6 +2656,7 @@ def main():
     mig_p.add_argument("--output", "-o", type=str, default=None, help="Output destination archive path.")
     mig_p.add_argument("--format", "-f", type=str, choices=["xz", "gz", "zip"], default="xz", help="Compression format (default: xz for maximum lossless compression).")
     mig_p.add_argument("--include-build-artifacts", action="store_true", help="Include build caches (target/, .venv/) in project archives.")
+    mig_p.add_argument("--include-secrets", action="store_true", help="Include secrets and sensitive environment files (.env) in export archive.")
     mig_p.add_argument("--fast", action="store_true", help="Ultra-fast export (uses high-throughput preset).")
     mig_p.add_argument("--preset", type=int, default=6, help="LZMA compression preset (0-9, default: 6).")
 
@@ -2393,6 +2668,7 @@ def main():
     mig_exp_p.add_argument("--output", "-o", type=str, default=None, help="Output destination archive path.")
     mig_exp_p.add_argument("--format", "-f", type=str, choices=["xz", "gz", "zip"], default="xz", help="Compression format (default: xz).")
     mig_exp_p.add_argument("--include-build-artifacts", action="store_true", help="Include compiler build artifacts.")
+    mig_exp_p.add_argument("--include-secrets", action="store_true", help="Include secrets and sensitive environment files (.env) in export archive.")
     mig_exp_p.add_argument("--fast", action="store_true", help="Ultra-fast export (uses high-throughput preset).")
     mig_exp_p.add_argument("--preset", type=int, default=6, help="LZMA compression preset (0-9, default: 6).")
 
@@ -2411,6 +2687,61 @@ def main():
 
     # migrate list
     mig_sub.add_parser("list", parents=[shared_parser], help="List available migration archives in data/migrations.")
+
+    # Gatekeeper (Tsetlin Machine Propositional Intent & Preference Rule Gatekeeper)
+    gk_p = subparsers.add_parser("gatekeeper", aliases=["tsetlin"], parents=[shared_parser], help="Deterministic Tsetlin Machine Propositional Intent & Preference Rule Gatekeeper.")
+    gk_sub = gk_p.add_subparsers(dest="gatekeeper_action", help="Gatekeeper action")
+
+    # gatekeeper route <text>
+    gk_route_p = gk_sub.add_parser("route", parents=[shared_parser], help="High-speed intent routing (<1ms) with propositional clause explanation.")
+    gk_route_p.add_argument("text", type=str, help="Prompt or text to route.")
+
+    # gatekeeper rules [--category <name>]
+    gk_rules_p = gk_sub.add_parser("rules", parents=[shared_parser], help="Display learned propositional logic Boolean rules.")
+    gk_rules_p.add_argument("--category", "--class", dest="category", type=str, default=None, help="Filter rules to specific category.")
+    gk_rules_p.add_argument("--limit", type=int, default=8, help="Max rules per category (default: 8).")
+
+    # gatekeeper train [--epochs <n>] [--seed-only]
+    gk_train_p = gk_sub.add_parser("train", parents=[shared_parser], help="Retrain Tsetlin Machine model from Cephalo memory and seed dataset.")
+    gk_train_p.add_argument("--epochs", type=int, default=40, help="Training epochs (default: 40).")
+    gk_train_p.add_argument("--seed-only", action="store_true", help="Train strictly on curated seed data.")
+
+    # gatekeeper cinema <description>
+    gk_cin_p = gk_sub.add_parser("cinema", parents=[shared_parser], help="Evaluate cinema recommendation against user TCL 65T8B 4K preference rules.")
+    gk_cin_p.add_argument("text", type=str, help="Movie or entertainment description to evaluate.")
+
+    # Update (Auto-Updater & Release Tracking)
+    up_p = subparsers.add_parser("update", parents=[shared_parser], help="Manage Cephalo background auto-updates and release synchronization.")
+    up_sub = up_p.add_subparsers(dest="update_action", help="Update action")
+
+    up_check_p = up_sub.add_parser("check", parents=[shared_parser], help="Check GitHub for newer Cephalo release.")
+    up_check_p.add_argument("--force", action="store_true", help="Bypass throttling cache and check GitHub immediately.")
+
+    up_apply_p = up_sub.add_parser("apply", aliases=["run"], parents=[shared_parser], help="Apply available release update.")
+    up_apply_p.add_argument("--sync", action="store_true", help="Run update synchronously instead of in background.")
+    up_apply_p.add_argument("--target", type=str, help="Specific target tag/version to install.")
+
+    up_pol_p = up_sub.add_parser("policy", parents=[shared_parser], help="Configure auto-update policy (auto, notify, off).")
+    up_pol_p.add_argument("policy_mode", nargs="?", choices=["auto", "notify", "off"], help="Auto-update mode.")
+
+    up_sub.add_parser("status", parents=[shared_parser], help="Show auto-update and release tracker status.")
+
+    # Integrate (Ecosystem Adaptive Integrator)
+    int_p = subparsers.add_parser("integrate", parents=[shared_parser], help="Non-destructively integrate Cephalo into developer ecosystems.")
+    int_sub = int_p.add_subparsers(dest="integrate_action", help="Target ecosystem")
+    int_sub.add_parser("all", parents=[shared_parser], help="Integrate into all detected ecosystems (shells, harnesses, IDEs).")
+    int_sub.add_parser("shells", parents=[shared_parser], help="Integrate into Bash, Zsh, and Fish shells.")
+    int_sub.add_parser("antigravity", parents=[shared_parser], help="Integrate into Google Antigravity & Gemini CLI.")
+    int_sub.add_parser("claude", parents=[shared_parser], help="Integrate into Claude Code.")
+    int_sub.add_parser("cursor", parents=[shared_parser], help="Integrate into Cursor IDE.")
+    int_sub.add_parser("windsurf", parents=[shared_parser], help="Integrate into Windsurf Cascade.")
+    int_sub.add_parser("cline", aliases=["vscode", "roo"], parents=[shared_parser], help="Integrate into VS Code Cline / Roo Code.")
+    int_proj_p = int_sub.add_parser("project", parents=[shared_parser], help="Integrate Cephalo grounding into a local project directory.")
+    int_proj_p.add_argument("path", nargs="?", default=".", help="Target project root directory.")
+    int_sub.add_parser("status", aliases=["doctor"], parents=[shared_parser], help="Inspect integration health across all ecosystems.")
+
+    # Doctor
+    subparsers.add_parser("doctor", parents=[shared_parser], help="Inspect Cephalo ecosystem integration health.")
 
     args = parser.parse_args()
 
@@ -2445,6 +2776,11 @@ def main():
         "queue": cmd_queue,
         "ocr": cmd_ocr,
         "migrate": cmd_migrate,
+        "gatekeeper": cmd_gatekeeper,
+        "tsetlin": cmd_gatekeeper,
+        "update": cmd_update,
+        "integrate": cmd_integrate,
+        "doctor": cmd_integrate,
     }
 
     if not args.command:

@@ -367,6 +367,7 @@ class MigrationManager:
         output_path: Optional[Path] = None,
         compression_format: CompressionFormat = CompressionFormat.XZ,
         include_build_artifacts: bool = False,
+        include_secrets: bool = False,
         preset: int = 6,
         fast: bool = False,
         comment: str = "",
@@ -411,6 +412,7 @@ class MigrationManager:
                 planned_items=planned_items,
                 scope=scope,
                 include_build_artifacts=include_build_artifacts,
+                include_secrets=include_secrets,
                 temp_dir=temp_db_dir,
             )
 
@@ -563,6 +565,7 @@ class MigrationManager:
         planned_items: List[Tuple[Path, str, str]],
         scope: MigrationScope,
         include_build_artifacts: bool,
+        include_secrets: bool,
         temp_dir: Path,
     ) -> None:
         """Plans Cephalo's configuration, rules, specialties, patterns, and optionally data."""
@@ -575,9 +578,10 @@ class MigrationManager:
         sf = self.data_dir / "safeguards.json"
         self._plan_file(sf, "cephalo/safeguards.json", "cephalo_safeguards", planned_items)
 
-        # C. Environment (.env) if exists
-        env_file = self.base_dir / ".env"
-        self._plan_file(env_file, "cephalo/.env", "cephalo_env", planned_items)
+        # C. Environment (.env) if exists and explicitly authorized
+        if include_secrets:
+            env_file = self.base_dir / ".env"
+            self._plan_file(env_file, "cephalo/.env", "cephalo_env", planned_items)
 
         # D. Specialties, Patterns, Integrations
         for d_name, cat in [("specialties", "cephalo_specialty"), ("patterns", "cephalo_pattern"), ("integrations", "cephalo_integration")]:
@@ -1283,17 +1287,27 @@ class MigrationManager:
             raise ValueError(f"Unrecognized archive format for {archive_path}")
 
     def _extract_archive(self, archive_path: Path, dest_dir: Path) -> None:
-        """Extracts all files from archive into dest_dir safely."""
+        """Extracts all files from archive into dest_dir safely, preventing path traversal."""
+        dest_dir_resolved = dest_dir.resolve()
         name = archive_path.name.lower()
         if name.endswith((".tar.xz", ".tar.gz", ".tar.bz2", ".tar")):
             with tarfile.open(archive_path, mode="r:*") as tar:
-                # Use data filter on Python 3.12+ if available for security
+                # Security check: validate members to prevent directory traversal
+                for member in tar.getmembers():
+                    target_p = (dest_dir / member.name).resolve()
+                    if not target_p.is_relative_to(dest_dir_resolved):
+                        raise ValueError(f"Path traversal detected in archive member: '{member.name}'")
                 if hasattr(tarfile, "data_filter"):
                     tar.extractall(dest_dir, filter="data")
                 else:
                     tar.extractall(dest_dir)
         elif name.endswith(".zip"):
             with zipfile.ZipFile(archive_path, mode="r") as zf:
+                # Security check: validate all zip member names
+                for member_name in zf.namelist():
+                    target_p = (dest_dir / member_name).resolve()
+                    if not target_p.is_relative_to(dest_dir_resolved):
+                        raise ValueError(f"Zip slip path traversal detected in archive entry: '{member_name}'")
                 zf.extractall(dest_dir)
         else:
             raise ValueError(f"Unrecognized archive format for {archive_path}")

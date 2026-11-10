@@ -119,7 +119,52 @@ To prevent heavy ML dependencies (LanceDB, ONNX, FastEmbed) from touching your s
 bash scripts/install.sh --venv     # Creates isolated .venv on Linux / macOS / WSL
 ```
 
-> **Adaptive & Non-Destructive Invariant:** Cephalo respects existing user configurations and dotfiles. It never overwrites your global `CLAUDE.md`, shell configs, or hook registries. Instead, it injects scoped `<!-- CEPHALO MANAGED BLOCK START/END -->` blocks, creates timestamped `.bak` files, and keeps your private memories strictly local. Cephalo operates purely as an installed tool—background daemons never auto-commit or push to Git.
+> **Adaptive & Non-Destructive Invariant:** Cephalo respects existing user configurations and dotfiles. It never overwrites your global `CLAUDE.md`, shell configs (`.bashrc`, `.zshrc`, `config.fish`), or hook registries. Instead, it injects scoped `# >>> cephalo initialize >>>` managed blocks, creates timestamped `.bak` files, and keeps your private memories strictly local. Cephalo operates purely as an installed tool—background daemons never auto-commit or push to Git.
+
+### 🩺 Health & Ecosystem Diagnostics
+Verify and inspect integration health across all shells, IDEs, and agent harnesses:
+```bash
+cephalo doctor
+```
+
+### 🧩 Ecosystem Integration & Project Grounding
+Cephalo can non-destructively adapt and hook into any developer environment or workspace:
+```bash
+# Integrate into all detected tools (shells, Antigravity, Claude Code, Cursor, Windsurf, VS Code / Cline / Roo)
+cephalo integrate all
+
+# Integrate specifically into shells (Bash, Zsh, Fish)
+cephalo integrate shells
+
+# Ground Cephalo into any local project repo (creates non-destructive memory links in AGENTS.md / .cursorrules)
+cephalo integrate project ./my-project
+```
+
+### ⚡ Autonomous Background Auto-Updater
+Cephalo automatically keeps your cognitive coprocessor up to date without interrupting your workflow:
+- **Zero Flow Disruption:** Checks are throttled to run at most once every 6 hours and never block agent turns.
+- **Agent Harness Notification:** Newly applied updates and available releases are announced seamlessly upon session start.
+- **Safe Synchronization:** Automatically verifies working tree cleanliness before pulling; never overwrites uncommitted local work.
+```bash
+# Check GitHub for newer Cephalo release
+cephalo update check
+
+# Apply update in the background (or --sync for interactive terminal run)
+cephalo update apply
+
+# View auto-update status, lock state, and release information
+cephalo update status
+
+# Configure update policy: 'auto' (default), 'notify' (prompt only), or 'off'
+cephalo update policy auto
+```
+
+### 🧹 Clean & Reversible Uninstallation
+If you ever want to revert Cephalo integrations from your environment, run:
+```bash
+bash scripts/uninstall.sh
+```
+This safely removes all managed blocks, symlinks, and MCP entries without touching your local memory database (`data/`).
 
 ---
 
@@ -407,7 +452,21 @@ Cephalo is optimized for maximum efficiency on everyday hardware:
 
 ---
 
-## 9. Architecture
+## 9. Release Management & Automated GitHub Releases
+
+Cephalo uses automated GitHub Actions workflows for continuous integration, cross-platform native Rust binary builds, and releases:
+- **Precompiled Binaries**: Linux x86_64, macOS Apple Silicon (`aarch64`), and Windows x86_64 are automatically compiled and packaged upon tagging.
+- **Python Packages**: Wheels and source distributions are built and tested across Python 3.10, 3.11, 3.12, and 3.14.
+- **1-Command Release Helper**:
+  ```bash
+  # Interactive or automated version bump, test verification, git tagging, and GitHub release dispatch
+  ./scripts/release.sh patch   # e.g., 2.1.0 -> 2.1.1
+  ./scripts/release.sh minor   # e.g., 2.1.0 -> 2.2.0
+  ```
+
+---
+
+## 10. Architecture
 
 Cephalo strictly decouples **high-order agent reasoning** from **data storage and sanitization**:
 
@@ -439,7 +498,7 @@ flowchart TD
 
 ---
 
-## 10. Acknowledgements & Open-Source Credits
+## 11. Acknowledgements & Open-Source Credits
 
 Cephalo stands on the shoulders of giants in the open-source community. Whenever we adopt architectures, libraries, or methodologies from external projects, we honor and credit them here:
 
@@ -457,7 +516,7 @@ Cephalo stands on the shoulders of giants in the open-source community. Whenever
 
 ---
 
-## 11. License
+## 12. License
 
 Released under the [MIT License](LICENSE).  
 Copyright (c) 2026 Peter. Open-source, local-first, and built for privacy.

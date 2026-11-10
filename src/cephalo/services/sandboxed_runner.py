@@ -70,6 +70,20 @@ class SandboxedRunner:
                 logger.warning("OpenSandbox server failed, falling back to local isolated runner: %s", e)
 
         # 2. Local Isolated Sandbox Fallback
+        allow_fallback = os.environ.get("CEPHALO_ALLOW_UNSANDBOXED_FALLBACK", "0") == "1"
+        if not allow_fallback:
+            return {
+                "status": "error",
+                "backend": "none",
+                "error": (
+                    "OpenSandbox isolation daemon is offline (127.0.0.1:8080). "
+                    "Refusing to execute untrusted code without isolation. "
+                    "Start OpenSandbox or explicitly set CEPHALO_ALLOW_UNSANDBOXED_FALLBACK=1."
+                ),
+                "exit_code": 1,
+                "sandboxed": False,
+            }
+
         return self._run_local_isolated(code, language, allow_network, timeout_seconds, env_vars, start_time)
 
     def _run_via_opensandbox(
@@ -175,29 +189,31 @@ class SandboxedRunner:
 
             return {
                 "status": "completed",
-                "backend": "local_isolated_process",
+                "backend": "local_unisolated_process",
                 "exit_code": proc.returncode,
                 "stdout": proc.stdout,
                 "stderr": proc.stderr,
                 "runtime_ms": runtime_ms,
-                "sandboxed": True,
+                "sandboxed": False,
+                "isolation": "none (host subprocess fallback)",
+                "warning": "Code ran with host user permissions because OpenSandbox was unavailable.",
             }
 
         except subprocess.TimeoutExpired:
             return {
                 "status": "timeout",
-                "backend": "local_isolated_process",
+                "backend": "local_unisolated_process",
                 "error": f"Execution timed out after {timeout_seconds} seconds.",
                 "exit_code": 124,
-                "sandboxed": True,
+                "sandboxed": False,
             }
         except Exception as e:
             return {
                 "status": "error",
-                "backend": "local_isolated_process",
+                "backend": "local_unisolated_process",
                 "error": str(e),
                 "exit_code": 1,
-                "sandboxed": True,
+                "sandboxed": False,
             }
         finally:
             import shutil

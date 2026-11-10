@@ -266,6 +266,19 @@ class SpecialtiesManager:
         Autonomously synthesizes and creates a specialty for a technology or methodology.
         Uses verified curated knowledge if available, or generates a domain profile dynamically.
         """
+        clean_topic = topic.strip()
+        # Strictly reject sentences, questions, conversational phrases, punctuation, or overly long strings
+        if (
+            len(clean_topic) > 35
+            or re.search(r"[\.!?\n\r]", clean_topic)
+            or re.search(r"\b(i|we|my|you|the|is|are|was|were|cant|dont|nem|hogy|mert|kell|akar|lehet|van)\b", clean_topic, re.I)
+            or len(clean_topic.split()) > 4
+        ):
+            return {
+                "created": False,
+                "error": f"Rejected conversational text from becoming specialty topic: '{clean_topic[:30]}...'",
+            }
+
         from cephalo.learning.specialties_synthesizer import SpecialtySynthesizer
 
         # Check if already exists under project or global
@@ -351,9 +364,15 @@ class SpecialtiesManager:
             candidates = SpecialtySynthesizer.discover_technologies(text_or_items)
             # If no regex match from discover_technologies, check comma/semicolon/newline separated list
             if not candidates and any(sep in text_or_items for sep in [",", ";", "\n"]):
-                candidates = [c.strip() for c in re.split(r"[,;\n]+", text_or_items) if c.strip()]
-            elif not candidates and text_or_items.strip():
-                candidates = [text_or_items.strip()]
+                raw_splits = [c.strip() for c in re.split(r"[,;\n]+", text_or_items) if c.strip()]
+                candidates = [
+                    c for c in raw_splits
+                    if len(c) <= 35
+                    and not re.search(r"[\.!?\n\r]", c)
+                    and not re.search(r"\b(i|we|my|you|the|is|are|was|were|cant|dont|nem|hogy|mert|kell|akar|lehet|van)\b", c, re.I)
+                    and len(c.split()) <= 4
+                ]
+            # NEVER fall back to full sentence text! If no candidates detected, return empty.
         elif isinstance(text_or_items, (list, tuple, set)):
             candidates = list(text_or_items)
         else:

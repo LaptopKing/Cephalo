@@ -493,8 +493,8 @@ class QueueWorker:
             logger.warning(f"Indra OCR execution failed for frame {image_path}: {e}")
             raw_text = ""
 
-        from cephalo.core.embedding_pipeline import RegexShield
-        clean_text, _ = RegexShield().mask(raw_text)
+        from cephalo.core.embedding_pipeline import Sanitizer
+        clean_text = Sanitizer().sanitize(raw_text)
 
         # Update frame_index.jsonl
         index_file = DATA_DIR / "frames" / "frame_index.jsonl"

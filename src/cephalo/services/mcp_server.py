@@ -292,7 +292,7 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
         },
         {
             "name": "cephalo_run_sandboxed",
-            "description": "Safely executes untrusted code or scripts in an isolated OpenSandbox container (or bounded local sandbox) with Landlock/seccomp protection, timeout gating, and SSRF intranet shielding.",
+            "description": "Executes code in an isolated OpenSandbox microVM container (requires OpenSandbox daemon on 127.0.0.1:8080). Refuses unsandboxed local host execution unless CEPHALO_ALLOW_UNSANDBOXED_FALLBACK=1.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -664,7 +664,8 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
                 scope_str = arguments.get("scope", "settings")
                 scope = MigrationScope.ALL if scope_str == "all" else MigrationScope.SETTINGS
                 out_p = Path(arguments["output_path"]) if arguments.get("output_path") else None
-                return manager.create_migration(scope=scope, output_path=out_p)
+                inc_secrets = arguments.get("include_secrets", False)
+                return manager.create_migration(scope=scope, output_path=out_p, include_secrets=inc_secrets)
 
             elif action == "restore":
                 arch_str = arguments.get("archive_path")

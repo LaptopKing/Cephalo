@@ -153,8 +153,10 @@ function Merge-McpConfig {
 }
 
 # 1. Determine Target Directory
-$TargetDir = if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "brain.py"))) {`r`n    $PSScriptRoot`r`n} elseif ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "..\brain.py"))) {`r`n    (Resolve-Path (Join-Path $PSScriptRoot "..")).Path {
+$TargetDir = if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "brain.py"))) {
     $PSScriptRoot
+} elseif ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "..\brain.py"))) {
+    (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 } elseif (Test-Path (Join-Path $HOME ".gemini\antigravity\scratch\second-brain\brain.py")) {
     Join-Path $HOME ".gemini\antigravity\scratch\second-brain"
 } elseif (Test-Path "brain.py") {
@@ -291,7 +293,9 @@ echo Error: Python 3.10+ was not found on your system.
 exit /b 1
 "@
 
-$BinDir = Join-Path $TargetDir "bin"`r`nNew-Item -ItemType Directory -Path $BinDir -Force | Out-Null`r`nSet-Content -Path (Join-Path $BinDir "cephalo.bat") -Value $BatContent -Encoding ASCII
+$BinDir = Join-Path $TargetDir "bin"
+New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+Set-Content -Path (Join-Path $BinDir "cephalo.bat") -Value $BatContent -Encoding ASCII
 
 $AgyBin = Join-Path $HOME ".gemini\antigravity\bin"
 if (Test-Path $AgyBin) {
@@ -300,10 +304,23 @@ if (Test-Path $AgyBin) {
 }
 
 $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$BinDir = Join-Path $TargetDir "bin"`r`nif ($UserPath -notlike "*$BinDir*") {
+$BinDir = Join-Path $TargetDir "bin"
+if ($UserPath -notlike "*$BinDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$UserPath;$BinDir", "User")
     $env:Path = "$env:Path;$BinDir"
     Write-Host "      Added $BinDir to User PATH." -ForegroundColor Gray
+}
+
+# Optional PowerShell Profile Managed Block
+if ($PROFILE) {
+    $PsProfileBlock = @"
+# Cephalo Sovereign Memory CLI & Environment
+`$env:CEPHALO_DIR = "$TargetDir"
+if (`$env:Path -notlike "*$BinDir*") {
+    `$env:Path = "`$env:Path;$BinDir"
+}
+"@
+    Merge-ManagedBlock -FilePath $PROFILE -BlockContent $PsProfileBlock -BlockTag "cephalo initialize"
 }
 
 # 6. Adaptive Multi-Harness Integrations
@@ -399,6 +416,22 @@ if (Test-Path (Split-Path $WindsurfConfig -Parent)) {
     Merge-McpConfig -McpPath $WindsurfConfig -PythonExe $PythonCmd -McpServerScript $McpServerPath -SrcDir $SrcPath
     Write-Host "      Configured Cephalo MCP server as default in Windsurf." -ForegroundColor Green
 }
+
+# E. VS Code / Cline / Roo Code Non-Destructive MCP Integration
+$ClineConfigs = @(
+    (Join-Path $env:APPDATA "Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json"),
+    (Join-Path $env:APPDATA "Code\User\globalStorage\rooveterinaryinc.roo-cline\settings\cline_mcp_settings.json")
+)
+foreach ($cfg in $ClineConfigs) {
+    if (Test-Path (Split-Path $cfg -Parent)) {
+        Merge-McpConfig -McpPath $cfg -PythonExe $PythonCmd -McpServerScript $McpServerPath -SrcDir $SrcPath
+        Write-Host "      Configured Cephalo MCP server in VS Code Cline/Roo: $cfg" -ForegroundColor Green
+    }
+}
+
+# F. Autonomous Background Auto-Update Configuration
+Write-Host "      Configuring autonomous background update engine (zero flow disruption)..." -ForegroundColor Gray
+& $PythonCmd (Join-Path $TargetDir "brain.py") update policy auto 2>&1 | Out-Null
 
 # 7. Screen Memory & Visual Timeline Configuration
 Write-Host "[6/7] Configuring Desktop Screen Memory & Safeguards..." -ForegroundColor Yellow

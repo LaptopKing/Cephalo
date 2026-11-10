@@ -16,9 +16,14 @@ impl Sanitizer {
         let patterns = vec![
             // Explicit API Keys & Tokens
             (Regex::new(r"sk-[a-zA-Z0-9_\-]{20,}").unwrap(), "<REDACTED_API_KEY>"),
+            (Regex::new(r"\bAKIA[0-9A-Z]{16}\b").unwrap(), "<REDACTED_AWS_KEY>"),
             (Regex::new(r"ghp_[a-zA-Z0-9]{36}").unwrap(), "<REDACTED_GITHUB_TOKEN>"),
             (Regex::new(r"github_pat_[a-zA-Z0-9_]{50,}").unwrap(), "<REDACTED_GITHUB_TOKEN>"),
+            (Regex::new(r"\bxox[baprs]-[a-zA-Z0-9\-]{20,}\b").unwrap(), "<REDACTED_SLACK_TOKEN>"),
+            (Regex::new(r"\beyJ[a-zA-Z0-9_\-]{10,}\.eyJ[a-zA-Z0-9_\-]{10,}\.[a-zA-Z0-9_\-]+\b").unwrap(), "<REDACTED_JWT>"),
             (Regex::new(r"(?i)Bearer\s+[a-zA-Z0-9._\-]{20,}").unwrap(), "Bearer <REDACTED_TOKEN>"),
+            (Regex::new(r"(?i)\b(?:postgres|postgresql|mysql|mongodb|redis|amqp)://[^\s:]+:[^\s@]+@[^\s]+\b").unwrap(), "<REDACTED_CONNECTION_STRING>"),
+            (Regex::new(r"(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----").unwrap(), "<REDACTED_PRIVATE_KEY>"),
 
             // Hungarian Banking & Taxes
             (Regex::new(r"(?i)\bHU\d{2}[\s\-]?(?:\d{4}[\s\-]?){5}\d{4}\b").unwrap(), "<REDACTED_HU_IBAN>"),
@@ -37,7 +42,7 @@ impl Sanitizer {
         ];
 
         let assignment_pattern = Regex::new(
-            r#"(?i)(api[_-]?key|secret|token|password|auth|bearer)[\s:=]+["']?([a-zA-Z0-9!@#\$%\^&\*_\-]{8,})["']?"#,
+            r#"(?i)\b([a-zA-Z0-9_]*(?:api[_-]?key|secret[_-]?access[_-]?key|aws[_-]?secret|secret|token|password|passwd|auth|bearer)[a-zA-Z0-9_]*)\b\s*[:=]\s*["']?([^"'\s\r\n]{3,})["']?"#,
         ).unwrap();
 
         Self {
@@ -93,12 +98,21 @@ impl Sanitizer {
             result = re.replace_all(&result, *replacement).to_string();
         }
 
-        // 2. High entropy secret assignment check
+        // 2. High entropy & explicit secret assignment check
         let mut replacements = Vec::new();
         for cap in self.assignment_pattern.captures_iter(&result) {
+            let prefix = cap.get(1).map(|m| m.as_str().to_lowercase()).unwrap_or_default();
             if let Some(val_match) = cap.get(2) {
                 let val = val_match.as_str();
-                if Self::shannon_entropy(val) > 3.2 && val.len() >= 12 {
+                let is_explicit = prefix.contains("password")
+                    || prefix.contains("passwd")
+                    || prefix.contains("secret")
+                    || prefix.contains("token")
+                    || prefix.contains("key")
+                    || prefix.contains("auth")
+                    || prefix.contains("bearer");
+
+                if is_explicit || (Self::shannon_entropy(val) > 3.2 && val.len() >= 12) || val.len() >= 20 {
                     replacements.push((val_match.start(), val_match.end()));
                 }
             }
@@ -107,7 +121,7 @@ impl Sanitizer {
         // Apply replacements from back to front
         replacements.sort_by_key(|a| std::cmp::Reverse(a.0));
         for (start, end) in replacements {
-            result.replace_range(start..end, "<REDACTED_HIGH_ENTROPY_SECRET>");
+            result.replace_range(start..end, "<REDACTED_SECRET>");
         }
 
         result

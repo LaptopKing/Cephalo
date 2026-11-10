@@ -64,6 +64,40 @@ class TestSanitizer(unittest.TestCase):
         self.assertNotIn("1177 3016 1111 2222 0000 0000", clean)
         self.assertIn("<REDACTED_HU_IBAN>", clean)
 
+    def test_extended_secrets_redaction(self):
+        # AWS Key, JWT, GitHub fine-grained PAT, Slack token, DB URI, short password
+        aws_sample = "AKIA" + "IOSFODNN7EXAMPLE"
+        pat_sample = "github_pat" + "_11AEXAMPLE1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_12"
+        slack_sample = "xoxb" + "-123456789012-1234567890123-abcdefghijklmnopqrstuvwx"
+        jwt_sample = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." + "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0." + "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        text = f"""
+        AWS: {aws_sample}
+        PAT: {pat_sample}
+        JWT: {jwt_sample}
+        SLACK: {slack_sample}
+        DB: postgres://admin:secretpass123@db.internal:5432/mydb
+        password = "admin123"
+        PEM:
+        -----BEGIN RSA PRIVATE KEY-----
+        MIIEowIBAAKCAQEA0Y123456789...
+        -----END RSA PRIVATE KEY-----
+        """
+        clean = self.sanitizer.sanitize(text)
+        self.assertNotIn("AKIAIOSFODNN7EXAMPLE", clean)
+        self.assertNotIn("11AEXAMPLE1234567890", clean)
+        self.assertNotIn("1234567890123-abcdef", clean)
+        self.assertNotIn("eyJzdWIiOiIxMjM0NTY3ODkw", clean)
+        self.assertNotIn("secretpass123", clean)
+        self.assertNotIn("admin123", clean)
+        self.assertNotIn("MIIEowIBAAKCAQEA0Y123456789", clean)
+        self.assertIn("<REDACTED_AWS_KEY>", clean)
+        self.assertIn("<REDACTED_GITHUB_TOKEN>", clean)
+        self.assertIn("<REDACTED_SLACK_TOKEN>", clean)
+        self.assertIn("<REDACTED_JWT>", clean)
+        self.assertIn("<REDACTED_CONNECTION_STRING>", clean)
+        self.assertIn("<REDACTED_SECRET>", clean)
+        self.assertIn("<REDACTED_PRIVATE_KEY>", clean)
+
 
 class TestFastEmbed(unittest.TestCase):
     @classmethod

@@ -205,6 +205,15 @@ impl ScreenEngine {
             }
         }
 
+        // Check blacklisted sensitive web domains against active window title
+        let t_lower = title.to_lowercase();
+        for bd in &self.safeguards.blacklisted_domains {
+            let clean_domain = bd.trim_start_matches("*.").to_lowercase();
+            if !clean_domain.is_empty() && t_lower.contains(&clean_domain) {
+                return (true, Some(format!("Blacklisted sensitive domain: {}", bd)));
+            }
+        }
+
         (false, None)
     }
 
@@ -453,8 +462,12 @@ impl ScreenEngine {
             };
         }
 
-        // 1. Safeguard Check: blacklisted processes/titles
-        let (shielded, reason) = self.is_shielded(&win.title, &win.process);
+        // 1. Safeguard Check: blacklisted processes/titles and fail-closed inspection
+        let (shielded, reason) = if !force && self.safeguards.enabled && cfg!(target_os = "linux") && win.title.is_empty() && win.process.is_empty() {
+            (true, Some("Shielded: Active window context unavailable on Linux/Wayland without xdotool; failing closed to protect privacy. Pass --force to capture anyway.".to_string()))
+        } else {
+            self.is_shielded(&win.title, &win.process)
+        };
         if shielded {
             return ScreenCaptureResult {
                 status: "shielded".to_string(),

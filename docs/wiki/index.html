@@ -870,32 +870,49 @@
         return;
       }
 
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
       container.innerHTML = filtered.map(memo => {
         const isDep = memo.is_deprecated;
-        const tagsHtml = (memo.tags || []).map(t => `<span class="tag-pill" onclick="setTagFilter('${t}')">#${t}</span>`).join(' ');
-        const supersedesHtml = memo.supersedes ? `<div class="memo-relations">↳ Supersedes: <strong>${memo.supersedes}</strong></div>` : '';
+        const safeId = escapeHtml(memo.id || '');
+        const safeCat = escapeHtml(memo.category || 'general');
+        const safeSource = escapeHtml(memo.source || 'cli');
+        const tagsHtml = (memo.tags || []).map(t => {
+          const st = escapeHtml(t);
+          return `<span class="tag-pill" onclick="setTagFilter('${st}')">#${st}</span>`;
+        }).join(' ');
+        const supersedesHtml = memo.supersedes ? `<div class="memo-relations">↳ Supersedes: <strong>${escapeHtml(memo.supersedes)}</strong></div>` : '';
         const deprecatedBadge = isDep ? '<span class="badge badge-deprecated">DEPRECATED</span>' : '';
 
-        // Highlight inline #tags in content
-        const formattedContent = (memo.content || '').replace(/(#[a-zA-Z][a-zA-Z0-9_\-\/]*)/g, '<span style="color: var(--accent-cyan); font-weight: 500;">$1</span>');
+        // Highlight inline #tags in safely escaped content
+        const escapedContent = escapeHtml(memo.content || '');
+        const formattedContent = escapedContent.replace(/(#[a-zA-Z][a-zA-Z0-9_\-\/]*)/g, '<span style="color: var(--accent-cyan); font-weight: 500;">$1</span>');
 
         return `
-          <div class="memo-card ${isDep ? 'deprecated' : ''}" id="${memo.id}">
+          <div class="memo-card ${isDep ? 'deprecated' : ''}" id="${safeId}">
             <div class="memo-meta">
               <div class="memo-badges">
-                <span class="badge badge-id">${memo.id}</span>
-                <span class="badge badge-cat">${memo.category || 'general'}</span>
-                <span class="badge badge-source">${memo.source || 'cli'}</span>
+                <span class="badge badge-id">${safeId}</span>
+                <span class="badge badge-cat">${safeCat}</span>
+                <span class="badge badge-source">${safeSource}</span>
                 ${deprecatedBadge}
               </div>
-              <span title="${memo.timestamp}">${timeAgo(memo.timestamp)}</span>
+              <span title="${escapeHtml(memo.timestamp || '')}">${timeAgo(memo.timestamp)}</span>
             </div>
             <div class="memo-content">${formattedContent}</div>
-            ${memo.image_path ? `<div style="margin: 10px 0; border-radius: 6px; overflow: hidden; max-width: 320px; border: 1px solid var(--card-border);"><img src="/${memo.image_path}" alt="Screen Frame" style="width: 100%; display: block;" loading="lazy" /></div>` : ''}
+            ${memo.image_path ? `<div style="margin: 10px 0; border-radius: 6px; overflow: hidden; max-width: 320px; border: 1px solid var(--card-border);"><img src="/${escapeHtml(memo.image_path)}" alt="Screen Frame" style="width: 100%; display: block;" loading="lazy" /></div>` : ''}
             ${tagsHtml ? `<div class="memo-tags">${tagsHtml}</div>` : ''}
             ${supersedesHtml}
             <div class="memo-footer">
-              <button class="btn-copy" onclick="copyCardText(this, '${memo.id}')">Copy</button>
+              <button class="btn-copy" onclick="copyCardText(this, '${safeId}')">Copy</button>
             </div>
           </div>
         `;
@@ -980,7 +997,8 @@
     }
 
     function renderMarkdown(md) {
-      let html = md
+      if (!md) return '';
+      let html = escapeHtml(md)
         .replace(/^### (.*$)/gim, '<h3>$1</h3>')
         .replace(/^## (.*$)/gim, '<h2>$1</h2>')
         .replace(/^# (.*$)/gim, '<h1>$1</h1>')

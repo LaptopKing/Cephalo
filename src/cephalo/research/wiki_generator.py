@@ -1278,32 +1278,49 @@ Cephalo specifically handles:
         return;
       }
 
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
       container.innerHTML = filtered.map(memo => {
         const isDep = memo.is_deprecated;
-        const tagsHtml = (memo.tags || []).map(t => `<span class="tag-pill" onclick="setTagFilter('${t}')">#${t}</span>`).join(' ');
-        const supersedesHtml = memo.supersedes ? `<div class="memo-relations">↳ Supersedes: <strong>${memo.supersedes}</strong></div>` : '';
+        const safeId = escapeHtml(memo.id || '');
+        const safeCat = escapeHtml(memo.category || 'general');
+        const safeSource = escapeHtml(memo.source || 'cli');
+        const tagsHtml = (memo.tags || []).map(t => {
+          const st = escapeHtml(t);
+          return `<span class="tag-pill" onclick="setTagFilter('${st}')">#${st}</span>`;
+        }).join(' ');
+        const supersedesHtml = memo.supersedes ? `<div class="memo-relations">↳ Supersedes: <strong>${escapeHtml(memo.supersedes)}</strong></div>` : '';
         const deprecatedBadge = isDep ? '<span class="badge badge-deprecated">DEPRECATED</span>' : '';
 
-        // Highlight inline #tags in content
-        const formattedContent = (memo.content || '').replace(/(#[a-zA-Z][a-zA-Z0-9_\-\/]*)/g, '<span style="color: var(--accent-cyan); font-weight: 500;">$1</span>');
+        // Highlight inline #tags in safely escaped content
+        const escapedContent = escapeHtml(memo.content || '');
+        const formattedContent = escapedContent.replace(/(#[a-zA-Z][a-zA-Z0-9_\-\/]*)/g, '<span style="color: var(--accent-cyan); font-weight: 500;">$1</span>');
 
         return `
-          <div class="memo-card ${isDep ? 'deprecated' : ''}" id="${memo.id}">
+          <div class="memo-card ${isDep ? 'deprecated' : ''}" id="${safeId}">
             <div class="memo-meta">
               <div class="memo-badges">
-                <span class="badge badge-id">${memo.id}</span>
-                <span class="badge badge-cat">${memo.category || 'general'}</span>
-                <span class="badge badge-source">${memo.source || 'cli'}</span>
+                <span class="badge badge-id">${safeId}</span>
+                <span class="badge badge-cat">${safeCat}</span>
+                <span class="badge badge-source">${safeSource}</span>
                 ${deprecatedBadge}
               </div>
-              <span title="${memo.timestamp}">${timeAgo(memo.timestamp)}</span>
+              <span title="${escapeHtml(memo.timestamp || '')}">${timeAgo(memo.timestamp)}</span>
             </div>
             <div class="memo-content">${formattedContent}</div>
-            ${memo.image_path ? `<div style="margin: 10px 0; border-radius: 6px; overflow: hidden; max-width: 320px; border: 1px solid var(--card-border);"><img src="/${memo.image_path}" alt="Screen Frame" style="width: 100%; display: block;" loading="lazy" /></div>` : ''}
+            ${memo.image_path ? `<div style="margin: 10px 0; border-radius: 6px; overflow: hidden; max-width: 320px; border: 1px solid var(--card-border);"><img src="/${escapeHtml(memo.image_path)}" alt="Screen Frame" style="width: 100%; display: block;" loading="lazy" /></div>` : ''}
             ${tagsHtml ? `<div class="memo-tags">${tagsHtml}</div>` : ''}
             ${supersedesHtml}
             <div class="memo-footer">
-              <button class="btn-copy" onclick="copyCardText(this, '${memo.id}')">Copy</button>
+              <button class="btn-copy" onclick="copyCardText(this, '${safeId}')">Copy</button>
             </div>
           </div>
         `;
@@ -1388,7 +1405,8 @@ Cephalo specifically handles:
     }
 
     function renderMarkdown(md) {
-      let html = md
+      if (!md) return '';
+      let html = escapeHtml(md)
         .replace(/^### (.*$)/gim, '<h3>$1</h3>')
         .replace(/^## (.*$)/gim, '<h2>$1</h2>')
         .replace(/^# (.*$)/gim, '<h1>$1</h1>')
@@ -1520,19 +1538,24 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory=None, **kwargs):
         super().__init__(*args, directory=str(DOCS_WIKI_DIR), **kwargs)
 
+    def _is_allowed_origin(self, origin: str) -> bool:
+        """Validates that origin is strictly local or an authorized browser extension."""
+        if not origin:
+            return True
+        pattern = r'^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$'
+        if re.match(pattern, origin):
+            return True
+        if origin.startswith("moz-extension://") or origin.startswith("chrome-extension://"):
+            return True
+        return False
+
     def _send_cors(self):
         origin = self.headers.get("Origin", "")
         # Strictly restrict CORS to localhost and local extensions to prevent unauthorized memory exfiltration
-        if (
-            origin.startswith("http://localhost")
-            or origin.startswith("http://127.0.0.1")
-            or origin.startswith("moz-extension://")
-            or origin.startswith("chrome-extension://")
-            or not origin
-        ):
+        if self._is_allowed_origin(origin):
             self.send_header("Access-Control-Allow-Origin", origin or "http://127.0.0.1")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -1610,9 +1633,21 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
         if path.startswith("/data/frames/") or path.startswith("/frames/"):
             rel_path = path.lstrip("/")
             if rel_path.startswith("data/"):
-                img_path = ROOT_DIR / rel_path
+                img_path = (ROOT_DIR / rel_path).resolve()
             else:
-                img_path = DATA_DIR / rel_path
+                img_path = (DATA_DIR / rel_path).resolve()
+
+            allowed_dirs = [
+                (DATA_DIR / "frames").resolve(),
+                (ROOT_DIR / "data" / "frames").resolve(),
+            ]
+            if not any(img_path.is_relative_to(d) for d in allowed_dirs):
+                self.send_response(403)
+                self._send_cors()
+                self.end_headers()
+                self.wfile.write(b"Forbidden: path traversal blocked.")
+                return
+
             if img_path.exists() and img_path.is_file():
                 self.send_response(200)
                 self._send_cors()
@@ -1621,6 +1656,12 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
                 self.send_header("Content-Length", str(img_path.stat().st_size))
                 self.end_headers()
                 self.wfile.write(img_path.read_bytes())
+                return
+            else:
+                self.send_response(404)
+                self._send_cors()
+                self.end_headers()
+                self.wfile.write(b"Frame not found")
                 return
 
         if path == "/api/stats":
@@ -1660,6 +1701,22 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
+        origin = self.headers.get("Origin", "")
+        if origin and not self._is_allowed_origin(origin):
+            self.send_response(403)
+            self._send_cors()
+            self.end_headers()
+            self.wfile.write(b"Forbidden: Invalid Origin")
+            return
+
+        fetch_site = self.headers.get("Sec-Fetch-Site", "")
+        if fetch_site in ("cross-site",):
+            self.send_response(403)
+            self._send_cors()
+            self.end_headers()
+            self.wfile.write(b"Forbidden: Cross-site request rejected")
+            return
+
         if parsed.path in ("/api/record", "/ingest"):
             length = int(self.headers.get("Content-Length", 0))
             body_bytes = self.rfile.read(length)

@@ -23,10 +23,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import sqlite3
 import sys
 import time
@@ -196,6 +198,56 @@ class SearchResult:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+def validate_safe_url(url: str, allow_internal: bool = False) -> None:
+    """
+    Validates that a URL uses http/https and does not resolve to loopback,
+    private RFC-1918, link-local, cloud metadata, or internal intranet IPs (SSRF prevention).
+    """
+    if allow_internal:
+        return
+
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme.lower() not in ("http", "https"):
+        raise ValueError(f"Unsafe URL scheme '{parsed.scheme}': only http and https are allowed.")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError(f"Invalid URL: missing hostname in '{url}'.")
+
+    host_lower = hostname.lower()
+    if (
+        host_lower in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "metadata.google.internal")
+        or host_lower.endswith(".local")
+        or host_lower.endswith(".internal")
+    ):
+        raise ValueError(f"SSRF Protection: Access to private/local host '{hostname}' is blocked.")
+
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None)
+    except Exception:
+        return
+
+    for addr in addr_infos:
+        ip_str = addr[4][0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+            if (
+                ip.is_loopback
+                or ip.is_private
+                or ip.is_link_local
+                or ip.is_multicast
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
+                raise ValueError(
+                    f"SSRF Protection: Destination '{hostname}' resolves to restricted/internal IP {ip_str}."
+                )
+        except ValueError:
+            raise
+        except Exception:
+            pass
 
 
 class HTMLTextExtractor(HTMLParser):
@@ -953,6 +1005,13 @@ class WebSearchEngine:
         - Tier 2: Scrapling StealthyFetcher / Patchright (stealth Chromium, Turnstile solver).
         - Tier 3: Fallback to urllib.request + Playwright sync_api.
         """
+        # 0. SSRF Security Validation
+        try:
+            validate_safe_url(target_url)
+        except ValueError as ssrf_err:
+            logger.warning(f"SSRF blocked attempt to fetch: {target_url} - {ssrf_err}")
+            return f"[SSRF Blocked: {ssrf_err}]"
+
         if self.is_youtube_url(target_url):
             try:
                 yt_res = self.fetch_youtube_transcript(target_url, max_chars=max_chars)
@@ -1056,6 +1115,13 @@ class WebSearchEngine:
         Prefers Scrapling StealthyFetcher (Patchright with Turnstile solver),
         falling back to Playwright sync_api.
         """
+        # 0. SSRF Security Validation
+        try:
+            validate_safe_url(target_url)
+        except ValueError as ssrf_err:
+            logger.warning(f"SSRF blocked attempt to dynamically fetch: {target_url} - {ssrf_err}")
+            return f"[SSRF Blocked: {ssrf_err}]"
+
         # 1. Tier 2: Scrapling StealthyFetcher (Patchright)
         if HAS_SCRAPLING:
             try:

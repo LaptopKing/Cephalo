@@ -75,6 +75,30 @@ def slugify(text: str) -> str:
     return text or "default"
 
 
+def sanitize_untrusted_web_content(text: str) -> str:
+    """
+    Sanitizes external web and repository text against prompt injection attacks,
+    jailbreak triggers, and system prompt override directives before indexing into memory.
+    """
+    if not text:
+        return ""
+    # 1. Defang delimiter and role spoofing tags
+    text = re.sub(r'(?i)</?(?:system|assistant|user|instructions?|rules?|guidelines?)[^>]*>', '', text)
+    # 2. Defang common prompt injection / jailbreak override phrases
+    injection_patterns = [
+        r'(?i)\bignore\s+(?:all\s+)?(?:previous|prior)\s+instructions\b',
+        r'(?i)\bdisregard\s+(?:all\s+)?(?:prior|previous|existing)\s+rules\b',
+        r'(?i)\byou\s+are\s+now\s+(?:an?\s+)?(?:unrestricted|jailbroken|evil)\b',
+        r'(?i)\bbypass\s+(?:all\s+)?safeguards?\b',
+    ]
+    for pat in injection_patterns:
+        text = re.sub(pat, '[BLOCKED_INJECTION_DIRECTIVE]', text)
+    # 3. Defang raw script tags and event handlers
+    text = re.sub(r'(?i)<script[\s\S]*?</script>', '', text)
+    text = re.sub(r'(?i)\bon\w+\s*=\s*["\'][^"\']*["\']', '', text)
+    return text.strip()
+
+
 @dataclass
 class GitHubRepoInfo:
     name: str
@@ -279,6 +303,19 @@ class DeepResearchEngine:
 
         return patterns
 
+    def _get_configured_display_profile(self) -> str:
+        """Dynamically retrieves hardware display constraints from USER_PROFILE.md."""
+        try:
+            profile_path = ROOT_DIR / "USER_PROFILE.md"
+            if profile_path.exists():
+                text = profile_path.read_text(encoding="utf-8")
+                m = re.search(r'(?i)(?:display|tv|monitor)[\s:*#]+([^\n\r]+)', text)
+                if m:
+                    return m.group(1).strip()
+        except Exception:
+            pass
+        return "TCL 65T8B (65-inch 4K QLED Google TV)"
+
     def decompose_subtopics(self, topic: str, user_subtopics: Optional[List[str]] = None) -> List[str]:
         """Decomposes a broad topic into granular architectural subtopics."""
         if user_subtopics:
@@ -319,9 +356,10 @@ class DeepResearchEngine:
                 "Idempotency Keys & Replay Protection",
             ])
         elif any(w in clean for w in self.MEDIA_KEYWORDS):
+            disp = self._get_configured_display_profile()
             subtopics.extend([
                 "Asset Preprocessing & Pipeline Optimization",
-                "Color Grading & Saturation Tuning (TCL 65T8B 4K Pop)",
+                f"Color Grading & Saturation Tuning ({disp})",
                 "Zero-Buffering Playback & Instant Velocity Pacing",
             ])
         else:
@@ -381,10 +419,13 @@ class DeepResearchEngine:
             )
 
         if industry_snippets:
-            fundamentals_blocks.append(
-                "### Industry Standards & Production Evidence\n"
-                + "\n".join([f"- {snip}" for snip in industry_snippets[:3]])
-            )
+            clean_snippets = [sanitize_untrusted_web_content(snip) for snip in industry_snippets[:3]]
+            clean_snippets = [s for s in clean_snippets if s]
+            if clean_snippets:
+                fundamentals_blocks.append(
+                    "### Industry Standards & Production Evidence\n"
+                    + "\n".join([f"- {snip}" for snip in clean_snippets])
+                )
 
         if reference_patterns:
             pattern_lines = [
@@ -392,8 +433,9 @@ class DeepResearchEngine:
                 "Concrete AST interfaces, types, and function contracts mined from battle-tested open-source codebases:"
             ]
             for p in reference_patterns[:6]:
+                sym = sanitize_untrusted_web_content(p['symbol'])
                 pattern_lines.append(
-                    f"- **`{p['symbol']}`** (`{p['kind']}`) in [{p['repo']}:{p['file']}](https://github.com/{p['repo']}/blob/main/{p['file']})\n  ```\n  {p['signature']}\n  ```"
+                    f"- **`{sym}`** (`{p['kind']}`) in [{p['repo']}:{p['file']}](https://github.com/{p['repo']}/blob/main/{p['file']})\n  ```\n  {p['signature']}\n  ```"
                 )
             fundamentals_blocks.append("\n".join(pattern_lines))
 
@@ -409,9 +451,10 @@ class DeepResearchEngine:
             )
 
         if is_media_topic:
+            disp = self._get_configured_display_profile()
             fundamentals_blocks.append(
                 "### Living Room Hardware & Display Optimization\n"
-                f"Engineered specifically for the primary living room display: **TCL 65T8B** (65-inch 4K QLED Google TV). "
+                f"Engineered specifically for the primary living room display: **{disp}**. "
                 f"Prioritizes eye-popping visual pop, high dynamic range, vibrant saturation, and instant velocity from minute 1. "
                 f"Strictly avoids slow-burn pacing and drab, muted grey palettes."
             )

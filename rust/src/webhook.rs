@@ -44,14 +44,32 @@ pub struct IngestResponse {
     pub sanitized: String,
 }
 
+/// Validates whether an incoming HTTP Origin header is strictly local or an authorized extension.
+fn is_allowed_origin(origin: &str) -> bool {
+    if origin.is_empty() {
+        return true;
+    }
+    if origin.starts_with("moz-extension://") || origin.starts_with("chrome-extension://") {
+        return true;
+    }
+    for prefix in &["http://localhost", "https://localhost", "http://127.0.0.1", "https://127.0.0.1"] {
+        if origin == *prefix {
+            return true;
+        }
+        if origin.starts_with(prefix) {
+            let rest = &origin[prefix.len()..];
+            if rest.starts_with(':') && rest[1..].chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Middleware to enforce strict CORS origins (localhost, 127.0.0.1, browser extensions)
 async fn cors_origin_gate(req: Request, next: Next) -> Response {
     let origin_header = req.headers().get("origin").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-    let is_allowed = origin_header.is_empty()
-        || origin_header.starts_with("http://localhost")
-        || origin_header.starts_with("http://127.0.0.1")
-        || origin_header.starts_with("moz-extension://")
-        || origin_header.starts_with("chrome-extension://");
+    let is_allowed = is_allowed_origin(&origin_header);
 
     if req.method() == axum::http::Method::OPTIONS {
         if is_allowed {

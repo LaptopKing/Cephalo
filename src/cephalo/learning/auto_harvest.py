@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -45,6 +46,7 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 SCRIPT_DIR = ROOT_DIR
 DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
+QUARANTINE_FILE = DATA_DIR / "prompts_quarantine.jsonl"
 STATE_FILE = DATA_DIR / "harvest_state.json"
 PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 LANCEDB_DIR = DATA_DIR / "lancedb"
@@ -52,27 +54,7 @@ LANCEDB_DIR = DATA_DIR / "lancedb"
 # Threshold for Qwen 1024d L2 distance (<= 1.22 indicates strong semantic relevance to personal knowledge)
 RELEVANCE_DISTANCE_THRESHOLD = 1.22
 
-# Regular expression cues indicating persistent preferences or feedback
-PREFERENCE_SIGNALS = [
-    # Dislikes / Critiques
-    (r"\b(found it boring|too slow|too grey|waste our time|didn't like|dislike|hated?|terrible|not what we were looking for)\b", "critique_negative_filter"),
-    # Preferences / Likes
-    (r"\b(we loved?|prefer|preference|favorite|really liked?|enjoyed|looking for)\b", "user_preference"),
-    # Hardware / Device setup
-    (r"\b(my tv is|my monitor is|my setup|hardware|graphics card|gpu|resolution|screen size|tcl|qled)\b", "hardware_spec"),
-    # Directives / Workflows
-    (r"\b(should always|never do|always use|my rule is|by default|from now on)\b", "workflow_rule"),
-    # Pre-recommendation Validation Invariant
-    (r"\b(always validate|validate before|verify before|double check|confirm before recommending|never assume|validate recommendation)\b", "validation_invariant"),
-    # First language / regional
-    (r"\b(first language|native language|hungarian|magyar|marketplace)\b", "language_locale"),
-    # Entertainment / Media
-    (r"\b(movie|film|series|watch|show|cinema|director|bullet train|gentlemen)\b", "entertainment_preferences"),
-    # Deep Research & Investigation cues
-    (r"\b(research|investigat(e|ion|ing)|deep dive|deepness|best practices|industry standard|popular github|look into)\b", "deep_research_trigger"),
-    # Specialty trigger / Technology adoption
-    (r"\b(specialt(y|ies)|need specialties|build up our specialties|technolog(y|ies)|stack|architecture)\b", "specialty_domain_learning"),
-]
+# Multilingual Classifier is loaded on demand from cephalo.learning.multilingual_classifier
 
 
 def load_state() -> Dict[str, Any]:
@@ -151,44 +133,61 @@ def harvest_all_user_prompts(messages: List[Dict[str, Any]], conversation_id: st
         except Exception:
             pass
 
+    from cephalo.learning.multilingual_classifier import MultilingualClassifier
+    classifier = MultilingualClassifier()
+
     for msg in messages:
         text = msg["content"]
         if text in existing_contents:
             continue
 
-        detected_categories = []
-        for pattern, cat in PREFERENCE_SIGNALS:
-            if re.search(pattern, text, re.IGNORECASE):
-                detected_categories.append(cat)
+        result = classifier.classify(text)
+        prompt_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+        prompt_id = f"prompt-auto-{prompt_hash}"
 
-        primary_cat = detected_categories[0] if detected_categories else "user_prompt"
-        prompt_id = f"prompt-auto-{abs(hash(text)) % 1000000:06d}"
+        # Sanitize prompt content before writing to disk
+        from cephalo.core.embedding_pipeline import Sanitizer
+        clean_text = Sanitizer().sanitize(text)
 
         entry = {
             "id": prompt_id,
             "timestamp": msg.get("timestamp") or datetime.datetime.now().astimezone().isoformat(),
             "source": "auto_harvester",
-            "category": primary_cat,
+            "category": result.category,
+            "is_durable": result.is_durable,
+            "is_quarantined": result.is_quarantined,
+            "language": result.detected_language,
             "conversation_id": conversation_id,
             "step_index": msg.get("step_index"),
-            "content": text,
-            "extracted_intent": f"User prompt recorded: {primary_cat}",
-            "detected_signals": detected_categories,
+            "content": clean_text,
+            "extracted_intent": f"User prompt [{result.detected_language}]: {result.category}",
+            "detected_signals": result.detected_categories,
+            "rationale": result.rationale,
         }
 
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
-            with open(PROMPTS_FILE, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            existing_contents.add(text)
-            harvested_count += 1
+            if result.is_durable:
+                # Write to durable memory store (prompts.jsonl)
+                with open(PROMPTS_FILE, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                harvested_count += 1
+            else:
+                # Strict Ephemeral Quarantine: Write to quarantine audit log, never to LanceDB
+                with open(QUARANTINE_FILE, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-            # Autonomous Specialty creation & Deep Research for unknown technologies/methodologies
-            if "specialty_domain_learning" in detected_categories or "deep_research_trigger" in detected_categories:
+            existing_contents.add(text)
+
+            # Autonomous Specialty creation ONLY when explicit technology candidates are discovered
+            if "specialty_domain_learning" in result.detected_categories or "tech_stack_selection" in result.detected_categories:
                 try:
                     from cephalo.learning.specialties_manager import SpecialtiesManager
-                    sm = SpecialtiesManager()
-                    sm.auto_discover_and_create(text, project="global")
+                    from cephalo.learning.specialties_synthesizer import SpecialtySynthesizer
+                    techs = SpecialtySynthesizer.discover_technologies(text)
+                    if techs:
+                        sm = SpecialtiesManager()
+                        sm.auto_discover_and_create(text, project="global")
                 except Exception:
                     pass
         except Exception:
@@ -237,13 +236,15 @@ def query_relevant_memory(query_text: str) -> Optional[Tuple[str, str, float]]:
         if not results:
             return None
 
-        # Filter by threshold and ignore generic chat if distance is weak
+        # Filter by threshold and strictly exclude quarantined or generic conversational records
         valid = []
         for r in results:
-            dist = r.get("_distance", 2.0)
-            cat = r.get("category", "")
-            if cat in ("user_prompt", "general") and dist > 1.15:
+            if r.get("is_quarantined") is True:
                 continue
+            cat = r.get("category", "")
+            if cat in ("user_prompt", "general", "ephemeral_turn"):
+                continue
+            dist = r.get("_distance", 2.0)
             if dist <= RELEVANCE_DISTANCE_THRESHOLD:
                 valid.append(r)
 
@@ -373,10 +374,21 @@ def handle_session_start(input_data: Dict[str, Any]) -> None:
     except Exception:
         pass
 
+    # Background auto-update check on SessionStart
+    update_notice = ""
+    try:
+        from cephalo.services.updater import trigger_session_start_hook
+        notice_text = trigger_session_start_hook()
+        if notice_text:
+            update_notice = f" {notice_text}"
+    except Exception:
+        pass
+
     welcome_text = (
         f"🧠 Cephalo Second Brain is active and mounted at {ROOT_DIR}."
         + profile_summary
-        + gov_info +
+        + gov_info
+        + update_notice +
         " Mandatory Core Invariants: "
         "1) Cephalo-First Front Door (Step 0): Query Cephalo first (`cephalo search \"<query>\" --json` / `cephalo_search`) for ANY investigation, question, concept, or feature. NEVER use grep/rg as first choice. "
         "2) ALWAYS validate ground truth before recommending. Never extrapolate vendor shipping or pricing without verified facts. "

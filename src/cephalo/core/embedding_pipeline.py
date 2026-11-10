@@ -26,6 +26,7 @@ import math
 import os
 import re
 import sys
+import time
 import ctypes
 import warnings
 
@@ -128,8 +129,12 @@ class Sanitizer:
     PATTERNS = [
         # Explicit API Keys & Tokens
         (re.compile(r'sk-[a-zA-Z0-9_\-]{20,}'), '<REDACTED_API_KEY>'),
-        (re.compile(r'ghp_[a-zA-Z0-9]{36}'), '<REDACTED_GITHUB_TOKEN>'),
+        (re.compile(r'\bAKIA[0-9A-Z]{16}\b'), '<REDACTED_AWS_KEY>'),
+        (re.compile(r'\b(?:ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{50,})\b'), '<REDACTED_GITHUB_TOKEN>'),
+        (re.compile(r'\bxox[baprs]-[a-zA-Z0-9\-]{20,}\b'), '<REDACTED_SLACK_TOKEN>'),
+        (re.compile(r'\beyJ[a-zA-Z0-9_\-]{10,}\.eyJ[a-zA-Z0-9_\-]{10,}\.[a-zA-Z0-9_\-]+\b'), '<REDACTED_JWT>'),
         (re.compile(r'Bearer\s+[a-zA-Z0-9\._\-]{20,}', re.IGNORECASE), 'Bearer <REDACTED_TOKEN>'),
+        (re.compile(r'\b(?:postgres|postgresql|mysql|mongodb|redis|amqp):\/\/[^\s:]+:[^\s@]+@[^\s]+\b'), '<REDACTED_CONNECTION_STRING>'),
         # Hungarian IBAN (HU + 26 digits) & International IBAN
         (re.compile(r'\bHU\d{2}[\s\-]?(?:\d{4}[\s\-]?){5}\d{4}\b', re.IGNORECASE), '<REDACTED_HU_IBAN>'),
         # Hungarian GIRO Domestic Bank Account (8-8 or 8-8-8 digits)
@@ -149,8 +154,10 @@ class Sanitizer:
         (re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b'), '<REDACTED_IP>'),
     ]
 
+    PEM_KEY_PATTERN = re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----')
+
     ASSIGNMENT_PATTERN = re.compile(
-        r'(?i)(api[_-]?key|secret|token|password|auth|bearer)[\s:=]+["\']?([a-zA-Z0-9!@#\$%\^&\*_\-]{8,})["\']?'
+        r'(?i)\b([a-zA-Z0-9_]*(?:api[_-]?key|secret[_-]?access[_-]?key|aws[_-]?secret|secret|token|password|passwd|auth|bearer)[a-zA-Z0-9_]*)\b\s*[:=]\s*["\']?([^"\'\s\r\n]{3,})["\']?'
     )
 
     TARGET_PRESIDIO_ENTITIES = [
@@ -174,7 +181,7 @@ class Sanitizer:
             self.anonymizer = AnonymizerEngine()
             self.presidio_available = True
         except Exception as e:
-            logger.debug(f"Presidio not available or missing language model: {e}")
+            logger.warning(f"Presidio NLP engine not initialized ({e}); falling back to deterministic regex and entropy tier.")
 
         # 2. GLiNER Decision Model Setup (Local Zero-Shot)
         self.gliner_model = None
@@ -195,14 +202,18 @@ class Sanitizer:
         for pattern, replacement in self.PATTERNS:
             line = pattern.sub(replacement, line)
 
-        # Tier 1B: Shannon Entropy Guard on Assigned Secrets
+        # Tier 1B: Shannon Entropy & Explicit Assignment Guard
         def replace_entropy_secret(match):
             prefix = match.group(1)
             token = match.group(2)
+            prefix_lower = prefix.lower()
+            # Explicit secret keys are unconditionally redacted regardless of length or entropy
+            if any(k in prefix_lower for k in ("password", "passwd", "secret", "token", "api_key", "bearer", "auth")):
+                return f"{prefix}=<REDACTED_SECRET>"
             is_hex = bool(re.fullmatch(r'[0-9a-fA-F]+', token))
             ent = calculate_shannon_entropy(token)
             threshold = 3.0 if is_hex else 3.4
-            if ent >= threshold or len(token) >= 24:
+            if ent >= threshold or len(token) >= 20:
                 return f"{prefix}=<REDACTED_SECRET>"
             return match.group(0)
 
@@ -256,6 +267,8 @@ class Sanitizer:
         """Sanitizes text line-by-line while preserving code blocks and structure."""
         if not text:
             return ""
+        # Redact multiline PEM certificates and keys first
+        text = self.PEM_KEY_PATTERN.sub("<REDACTED_PRIVATE_KEY>", text)
         lines = text.split("\n")
         return "\n".join(self.sanitize_line(l) for l in lines)
 

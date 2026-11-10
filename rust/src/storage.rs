@@ -24,6 +24,8 @@ pub struct MemoryRecord {
     pub superseded_by: Option<String>,
     #[serde(default)]
     pub relates_to: Option<Vec<String>>,
+    #[serde(default)]
+    pub is_quarantined: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +112,7 @@ impl StorageEngine {
             is_deprecated: Some(false),
             superseded_by: None,
             relates_to: None,
+            is_quarantined: Some(false),
         };
 
         // Contextual supersession: if this record is a stateful preference, deprecate older conflicts
@@ -189,6 +192,11 @@ impl StorageEngine {
 
         for r in records {
             if !include_deprecated && r.is_deprecated == Some(true) {
+                continue;
+            }
+
+            // Exclude quarantined and raw ephemeral conversational records
+            if r.is_quarantined == Some(true) || r.category == "ephemeral_turn" || r.category == "user_prompt" {
                 continue;
             }
 

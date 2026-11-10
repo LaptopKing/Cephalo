@@ -61,10 +61,22 @@ impl DaemonSupervisor {
         // Reset interrupted jobs from prior reboots
         let _ = queue.reset_all_running_jobs();
 
-        // Start native webhook ingress gateway in background tokio task
+        // Start native webhook ingress gateway in background tokio task with auth token
+        let webhook_token = std::env::var("CEPHALO_WEBHOOK_TOKEN").ok().or_else(|| {
+            let token_path = self.data_dir.join("webhook_token.txt");
+            if let Ok(tok) = std::fs::read_to_string(&token_path) {
+                let t = tok.trim().to_string();
+                if !t.is_empty() {
+                    return Some(t);
+                }
+            }
+            let random_token = format!("{:x}{:x}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0), std::process::id());
+            let _ = std::fs::write(&token_path, &random_token);
+            Some(random_token)
+        });
         let webhook_data_dir = self.data_dir.clone();
         tokio::spawn(async move {
-            let _ = crate::webhook::start_webhook_server(webhook_data_dir, 7434, None).await;
+            let _ = crate::webhook::start_webhook_server(webhook_data_dir, 7434, webhook_token).await;
         });
 
         println!(

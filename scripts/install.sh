@@ -8,16 +8,25 @@
 
 set -e
 
-USE_VENV=0
+USE_VENV=1
+ENABLE_MCP=1
 for arg in "$@"; do
     case "$arg" in
         --venv)
             USE_VENV=1
             ;;
+        --system-python|--no-venv)
+            USE_VENV=0
+            ;;
+        --no-mcp)
+            ENABLE_MCP=0
+            ;;
         --help|-h)
             echo "Cephalo Adaptive Installer (Linux/macOS/WSL)"
-            echo "Usage: ./install.sh [--venv]"
-            echo "  --venv  Create and install into an isolated virtual environment (.venv)"
+            echo "Usage: ./install.sh [--venv | --system-python] [--no-mcp]"
+            echo "  --venv           Create and install into an isolated virtual environment (.venv) [DEFAULT]"
+            echo "  --system-python  Install directly into system Python"
+            echo "  --no-mcp         Skip MCP server registration across agent harnesses"
             exit 0
             ;;
     esac
@@ -39,8 +48,27 @@ merge_managed_block() {
     local target_file="$1"
     local block_content="$2"
     local block_tag="${3:-CEPHALO MANAGED BLOCK}"
-    local start_tag="<!-- ${block_tag} START -->"
-    local end_tag="<!-- ${block_tag} END -->"
+    local comment_style="${4:-}"
+
+    if [ -z "$comment_style" ]; then
+        case "$target_file" in
+            *.md|*.markdown|*.html|*.xml)
+                comment_style="<!--"
+                ;;
+            *)
+                comment_style="#"
+                ;;
+        esac
+    fi
+
+    local start_tag end_tag
+    if [ "$comment_style" = "<!--" ]; then
+        start_tag="<!-- ${block_tag} START -->"
+        end_tag="<!-- ${block_tag} END -->"
+    else
+        start_tag="# >>> ${block_tag} >>>"
+        end_tag="# <<< ${block_tag} <<<"
+    fi
 
     mkdir -p "$(dirname "$target_file")"
     if [ -f "$target_file" ]; then
@@ -48,28 +76,39 @@ merge_managed_block() {
         timestamp="$(date +%Y%m%d%H%M%S)"
         cp "$target_file" "${target_file}.bak.${timestamp}"
         
-        # Check if block exists
-        if grep -qF "$start_tag" "$target_file"; then
-            # Replace existing block using python
-            python3 -c "
+        # Check if block exists (supporting both current and legacy XML comment tags)
+        python3 -c "
 import sys, re
 path = sys.argv[1]
 start = sys.argv[2]
 end = sys.argv[3]
 content = sys.argv[4]
+tag = sys.argv[5]
+
 with open(path, 'r', encoding='utf-8') as f:
     text = f.read()
+
+legacy_start = f'<!-- {tag} START -->'
+legacy_end = f'<!-- {tag} END -->'
+
+# Remove legacy tags if present
+if legacy_start in text:
+    pattern_leg = re.escape(legacy_start) + r'.*?' + re.escape(legacy_end) + r'\n?'
+    text = re.sub(pattern_leg, '', text, flags=re.DOTALL)
+
 pattern = re.escape(start) + r'.*?' + re.escape(end)
 replacement = start + '\n' + content + '\n' + end
-text = re.sub(pattern, replacement, text, flags=re.DOTALL)
+
+if re.search(pattern, text, flags=re.DOTALL):
+    text = re.sub(pattern, replacement, text, flags=re.DOTALL)
+else:
+    sep = '\n\n' if text and not text.endswith('\n\n') else '\n'
+    text = text.rstrip() + sep + replacement + '\n'
+
 with open(path, 'w', encoding='utf-8') as f:
     f.write(text)
-" "$target_file" "$start_tag" "$end_tag" "$block_content"
-            echo "      Updated Cephalo block in $target_file (backup: ${target_file}.bak.${timestamp})"
-        else
-            printf "\n%s\n%s\n%s\n" "$start_tag" "$block_content" "$end_tag" >> "$target_file"
-            echo "      Appended Cephalo block to $target_file (backup: ${target_file}.bak.${timestamp})"
-        fi
+" "$target_file" "$start_tag" "$end_tag" "$block_content" "$block_tag"
+        echo "      Updated Cephalo block in $target_file (backup: ${target_file}.bak.${timestamp})"
     else
         printf "%s\n%s\n%s\n" "$start_tag" "$block_content" "$end_tag" > "$target_file"
         echo "      Created $target_file with Cephalo block."
@@ -103,8 +142,9 @@ if os.path.exists(path):
             content = f.read().strip()
             if content:
                 data = json.loads(content)
-    except Exception:
-        data = {}
+    except Exception as e:
+        print(f"Warning: Failed to parse existing JSON in {path}: {e}. Preserved backup and skipped merge.", file=sys.stderr)
+        sys.exit(0)
 
 data['cephalo-autonomous-brain'] = {
     'enabled': True,
@@ -128,6 +168,12 @@ merge_mcp_config() {
     local src_dir="$4"
 
     mkdir -p "$(dirname "$mcp_file")"
+    if [ -f "$mcp_file" ]; then
+        local timestamp
+        timestamp="$(date +%Y%m%d%H%M%S)"
+        cp "$mcp_file" "${mcp_file}.bak.${timestamp}"
+    fi
+
     python3 -c "
 import sys, json, os
 
@@ -141,8 +187,9 @@ if os.path.exists(path):
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-    except Exception:
-        data = {'mcpServers': {}}
+    except Exception as e:
+        print(f"Warning: Failed to parse existing JSON in {path}: {e}. Preserved backup and skipped merge.", file=sys.stderr)
+        sys.exit(0)
 
 if 'mcpServers' not in data:
     data['mcpServers'] = {}
@@ -217,10 +264,12 @@ else
     echo "[3/6] Optional crawler browser setup skipped (can run 'playwright install chromium' anytime)."
 fi
 
-# 5. Link executable into user bin
-echo "[4/6] Configuring 'cephalo' CLI command..."
+# 5. Link executable into user bin & configure shell environments
+echo "[4/7] Configuring 'cephalo' CLI command & Shell Environments (non-destructive)..."
 chmod +x "$TARGET_DIR/bin/cephalo"
 chmod +x "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
+chmod +x "$TARGET_DIR/scripts/release.sh"
+chmod +x "$TARGET_DIR/scripts/uninstall.sh"
 BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
 ln -sf "$TARGET_DIR/bin/cephalo" "$BIN_DIR/cephalo"
@@ -231,8 +280,30 @@ if [ -d "$HOME/.gemini/antigravity/bin" ]; then
     ln -sf "$TARGET_DIR/bin/cephalo" "$HOME/.gemini/antigravity/bin/cephalo"
 fi
 
+# Shell managed blocks integration (Bash, Zsh, Fish)
+SHELL_BLOCK="# Cephalo Sovereign Memory CLI & Environment
+export CEPHALO_DIR=\"$TARGET_DIR\"
+if [[ \":\$PATH:\" != *\":\$CEPHALO_DIR/bin:\"* ]]; then
+    export PATH=\"\$CEPHALO_DIR/bin:\$PATH\"
+fi"
+
+if [ -f "$HOME/.bashrc" ]; then
+    merge_managed_block "$HOME/.bashrc" "$SHELL_BLOCK" "cephalo initialize"
+fi
+if [ -f "$HOME/.zshrc" ]; then
+    merge_managed_block "$HOME/.zshrc" "$SHELL_BLOCK" "cephalo initialize"
+fi
+if [ -f "$HOME/.config/fish/config.fish" ]; then
+    FISH_BLOCK="# Cephalo Sovereign Memory CLI & Environment
+set -gx CEPHALO_DIR \"$TARGET_DIR\"
+if not contains \"\$CEPHALO_DIR/bin\" \$PATH
+    set -gx PATH \"\$CEPHALO_DIR/bin\" \$PATH
+end"
+    merge_managed_block "$HOME/.config/fish/config.fish" "$FISH_BLOCK" "cephalo initialize"
+fi
+
 # 6. Adaptive Multi-Harness Agent Integrations
-echo "[5/6] Configuring Multi-Harness Agent integrations (non-destructive)..."
+echo "[5/7] Configuring Multi-Harness Agent integrations (non-destructive)..."
 
 # A. Google Antigravity Integration
 if [ -d "$HOME/.gemini" ]; then
@@ -243,7 +314,8 @@ if [ -d "$HOME/.gemini" ]; then
     cat << EOF > "$AGY_PLUGIN/plugin.json"
 {
   "name": "cephalo",
-  "description": "Cephalo Omnipresent Autonomous Second Brain and Personal Memory Engine"
+  "description": "Cephalo Omnipresent Autonomous Second Brain and Personal Memory Engine",
+  "version": "2.1.0"
 }
 EOF
 
@@ -266,40 +338,61 @@ EOF
     merge_hooks_json "$AGY_PLUGIN/hooks.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
     merge_hooks_json "$HOME/.gemini/config/hooks.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
 
-    # Native MCP Integration as Installation Default
-    merge_mcp_config "$AGY_PLUGIN/mcp_config.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
-    merge_mcp_config "$HOME/.gemini/config/mcp_config.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
-    echo "      Configured Cephalo stdio MCP server as default in Antigravity."
+    # Native MCP Integration
+    if [ "$ENABLE_MCP" -eq 1 ]; then
+        merge_mcp_config "$AGY_PLUGIN/mcp_config.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+        merge_mcp_config "$HOME/.gemini/config/mcp_config.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+        echo "      Configured Cephalo stdio MCP server in Antigravity."
+    fi
 fi
 
 # B. Claude Code Integration (Clean MCP or Managed Block)
-if [ -d "$HOME/.claude" ]; then
-    if command -v claude &> /dev/null; then
+if [ -d "$HOME/.claude" ] || command -v claude &> /dev/null; then
+    if [ "$ENABLE_MCP" -eq 1 ] && command -v claude &> /dev/null; then
         claude mcp add cephalo -- "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" 2>/dev/null || true
         echo "      Registered Cephalo MCP server cleanly via 'claude mcp add'."
     fi
 
-    # Non-destructive block append to ~/.claude/CLAUDE.md
-    CLAUDE_TARGET="$HOME/.claude/CLAUDE.md"
-    CLAUDE_BLOCK="### Cephalo Sovereign Memory Integration
+    if [ -d "$HOME/.claude" ]; then
+        CLAUDE_TARGET="$HOME/.claude/CLAUDE.md"
+        CLAUDE_BLOCK="### Cephalo Sovereign Memory Integration
 - **Root Directory:** $TARGET_DIR
 - **Grounding Invariant:** Consult Cephalo before answering past preferences or decisions (\`cephalo search \"<query>\" --json\`).
 - **Autonomous Capture:** Record preferences & decisions immediately (\`cephalo record \"<statement>\" --category \"<category>\"\`)."
-    merge_managed_block "$CLAUDE_TARGET" "$CLAUDE_BLOCK"
-fi
-# C. Cursor IDE Non-Destructive MCP Integration (Installation Default)
-CURSOR_STORAGE="$HOME/.cursor/mcp.json"
-if [ -d "$HOME/.cursor" ]; then
-    merge_mcp_config "$CURSOR_STORAGE" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
-    echo "      Configured Cephalo MCP server as default in Cursor."
+        merge_managed_block "$CLAUDE_TARGET" "$CLAUDE_BLOCK" "Cephalo Sovereign Memory Integration" "<!--"
+    fi
 fi
 
-# D. Windsurf Cascade Non-Destructive MCP Integration (Installation Default)
-WINDSURF_CONFIG="$HOME/.codeium/windsurf/mcp_config.json"
-if [ -d "$HOME/.codeium/windsurf" ]; then
-    merge_mcp_config "$WINDSURF_CONFIG" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
-    echo "      Configured Cephalo MCP server as default in Windsurf."
+# C. Multi-Editor MCP Integrations
+if [ "$ENABLE_MCP" -eq 1 ]; then
+    # Cursor IDE
+    CURSOR_STORAGE="$HOME/.cursor/mcp.json"
+    if [ -d "$HOME/.cursor" ]; then
+        merge_mcp_config "$CURSOR_STORAGE" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+        echo "      Configured Cephalo MCP server in Cursor."
+    fi
+
+    # Windsurf Cascade
+    WINDSURF_CONFIG="$HOME/.codeium/windsurf/mcp_config.json"
+    if [ -d "$HOME/.codeium/windsurf" ]; then
+        merge_mcp_config "$WINDSURF_CONFIG" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+        echo "      Configured Cephalo MCP server in Windsurf."
+    fi
+
+    # VS Code / Cline / Roo Code
+    for cline_mcp in \
+        "$HOME/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json" \
+        "$HOME/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json"; do
+        if [ -d "$(dirname "$cline_mcp")" ]; then
+            merge_mcp_config "$cline_mcp" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
+            echo "      Configured Cephalo MCP server in VS Code Cline/Roo: $cline_mcp"
+        fi
+    done
 fi
+
+# F. Background Auto-Update Configuration
+echo "      Configuring autonomous background update engine (zero flow disruption)..."
+$PY_CMD "$TARGET_DIR/brain.py" update policy auto >/dev/null 2>&1 || true
 
 # 7. Screen Memory & Visual Timeline Configuration
 echo "[6/7] Configuring Desktop Screen Memory & Safeguards..."
@@ -321,6 +414,8 @@ echo "==========================================================================
 ENABLE_SCREEN=0
 if [ "$CEPHALO_ENABLE_SCREEN" = "1" ]; then
     ENABLE_SCREEN=1
+elif [ "$CEPHALO_ENABLE_SCREEN" = "0" ]; then
+    ENABLE_SCREEN=0
 elif [ -t 0 ]; then
     read -r -p "Would you like to enable continuous Desktop Screen Memory? [y/N] (Default: No): " screen_choice
     case "$screen_choice" in
