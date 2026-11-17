@@ -1,7 +1,6 @@
 //! Command Line Interface (CLI) Arguments & Flags Specification for Clap.
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
-use std::path::PathBuf;
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(

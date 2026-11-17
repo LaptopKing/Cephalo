@@ -19,7 +19,8 @@ import urllib.request
 from pathlib import Path
 import sys
 from pathlib import Path
-_SRC = Path(__file__).resolve().parent.parent / "src"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+_SRC = ROOT_DIR / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
@@ -152,10 +153,17 @@ class TestWebhookQuickCapture(unittest.TestCase):
             "text": "Remote note: TCL 65T8B requires Warm color temperature on SDR #hardware/display",
             "category": "hardware",
         }).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        token_path = ROOT_DIR / "data" / "webhook_token.txt"
+        if token_path.exists():
+            tok = token_path.read_text(encoding="utf-8").strip()
+            if tok:
+                headers["Authorization"] = f"Bearer {tok}"
+
         req = urllib.request.Request(
             "http://127.0.0.1:7434/ingest",
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
         )
         with urllib.request.urlopen(req, timeout=3) as resp:
             res = json.loads(resp.read().decode("utf-8"))

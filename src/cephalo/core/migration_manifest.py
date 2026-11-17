@@ -115,6 +115,9 @@ BUILD_CACHE_DIRECTORIES: Set[str] = {
     ".next",         # Next.js build cache
     ".turbo",        # Turborepo build cache
     ".nuxt",         # Nuxt build cache
+    "ms-playwright", # Playwright headless browser binaries
+    ".playwright",
+    ".cache",
 }
 
 
@@ -188,6 +191,8 @@ def should_exclude(rel_path: str, include_build_artifacts: bool = False) -> bool
         if not include_build_artifacts and p in BUILD_CACHE_DIRECTORIES:
             return True
     if "skills" in parts and ".git" in parts:
+        return True
+    if "plugins" in parts and ".git" in parts:
         return True
     if ".system_generated" in parts and "tasks" in parts:
         return True

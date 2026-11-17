@@ -1,11 +1,8 @@
 //! Task Ledger, Subagent Lifecycle, and Job Queue CLI Command Handlers.
 
-use std::path::Path;
-use serde_json::json;
-
 use crate::cli_args::*;
 use crate::governor::ResourceGovernor;
-use crate::queue::{self, JobQueue};
+use crate::queue::JobQueue;
 use crate::task_ledger::TaskLedger;
 
 pub fn handle_subagent_command(args: SubagentArgs, governor: &mut ResourceGovernor, ledger: &TaskLedger) -> Result<(), Box<dyn std::error::Error>> {

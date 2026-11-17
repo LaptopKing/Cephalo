@@ -89,6 +89,8 @@ class PreferenceRuleInducer:
         if TMClassifier is None:
             raise RuntimeError("tmu is not installed in the environment.")
 
+        np.random.seed(42)
+
         tm = TMClassifier(
             number_of_clauses=self.number_of_clauses,
             T=self.T,

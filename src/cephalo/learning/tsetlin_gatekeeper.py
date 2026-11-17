@@ -173,6 +173,8 @@ class TsetlinGatekeeper:
         if TMClassifier is None:
             raise RuntimeError("tmu package is not available in environment.")
 
+        np.random.seed(42)
+
         # Train Multi-Class Tsetlin Machine
         tm = TMClassifier(
             number_of_clauses=self.number_of_clauses,

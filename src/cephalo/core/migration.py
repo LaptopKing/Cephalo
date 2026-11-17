@@ -6,11 +6,14 @@ Single-command, zero-loss, encrypted/compressed migration package manager.
 from __future__ import annotations
 
 import datetime
+import io
 import json
 import logging
 import os
+import platform
 import shutil
 import sqlite3
+import sys
 import tarfile
 import tempfile
 import time
@@ -249,6 +252,15 @@ class MigrationManager(MigrationPlanner):
     # -------------------------------------------------------------------------
     # INSPECT
     # -------------------------------------------------------------------------
+    def _read_manifest_from_archive(self, archive_path: Path) -> Dict[str, Any]:
+        return MigrationRestorer(self)._read_manifest_from_archive(archive_path)
+
+    def _merge_hooks_json(self, *args, **kwargs) -> Any:
+        return MigrationRestorer(self)._merge_hooks_json(*args, **kwargs)
+
+    def _merge_mcp_config_json(self, *args, **kwargs) -> Any:
+        return MigrationRestorer(self)._merge_mcp_config_json(*args, **kwargs)
+
     def inspect_migration(self, archive_path: Path) -> Dict[str, Any]:
         """
         Inspects a migration archive without extracting its contents.
@@ -281,23 +293,19 @@ class MigrationManager(MigrationPlanner):
         self,
         archive_path: Path,
         dry_run: bool = False,
-        include_secrets: bool = False,
-        merge_harnesses: bool = True,
-        restore_data: bool = True,
-        restore_projects: bool = False,
-        project_slugs: Optional[List[str]] = None,
-        progress_cb: Optional[Callable[[str, int, int], None]] = None,
+        auto_backup: bool = True,
+        target_cephalo_dir: Optional[Path] = None,
+        only_cephalo: bool = False,
+        only_harnesses: bool = False,
     ) -> Dict[str, Any]:
         restorer = MigrationRestorer(self)
         return restorer.restore_migration(
             archive_path=archive_path,
             dry_run=dry_run,
-            include_secrets=include_secrets,
-            merge_harnesses=merge_harnesses,
-            restore_data=restore_data,
-            restore_projects=restore_projects,
-            project_slugs=project_slugs,
-            progress_cb=progress_cb,
+            auto_backup=auto_backup,
+            target_cephalo_dir=target_cephalo_dir,
+            only_cephalo=only_cephalo,
+            only_harnesses=only_harnesses,
         )
 
     def list_migrations(self) -> List[Dict[str, Any]]:

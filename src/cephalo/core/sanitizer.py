@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("cephalo.sanitizer")
 
+TAG_REGEX = re.compile(r'(?<!\S)#([a-zA-Z][a-zA-Z0-9_\-\/]*)\b')
+
 def extract_tags(text: str) -> List[str]:
     """Extracts inline #tags and hierarchical #tag/subtags from text (e.g. #cinema/hdr, #backend)."""
     if not text:
