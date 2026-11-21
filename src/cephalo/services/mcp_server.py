@@ -98,7 +98,10 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
         elif name == "cephalo_record":
             from brain import get_pipeline
             pipeline = get_pipeline()
-            text = arguments.get("text", "")
+            text = arguments.get("text") or arguments.get("content") or ""
+            text = text.strip()
+            if not text:
+                return {"status": "error", "message": "Cannot record empty memory content."}
             category = arguments.get("category", "general")
             intent = arguments.get("intent", "")
             supersedes = arguments.get("supersedes")

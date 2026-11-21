@@ -33,7 +33,7 @@ class CompactionCarryover:
         try:
             with open(transcript_path, "r", encoding="utf-8") as f:
                 for line in f:
-                    if '"truncated_fields"' in line or '"compactionSummary"' in line or '"firstKeptEntryId"' in line:
+                    if '"compactionSummary"' in line or '"firstKeptEntryId"' in line or '"session_compacted"' in line:
                         return True
         except Exception:
             pass

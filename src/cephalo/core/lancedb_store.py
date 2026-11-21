@@ -127,6 +127,27 @@ class LanceDBStore:
             logger.debug(f"Could not read existing IDs: {e}")
             return set()
 
+    def delete_records(self, ids: Set[str] | List[str]) -> int:
+        """Deletes records by ID from the LanceDB table."""
+        if not ids or self.table.count_rows() == 0:
+            return 0
+        deleted_count = 0
+        try:
+            id_list = list(ids)
+            chunk_size = 50
+            for i in range(0, len(id_list), chunk_size):
+                chunk = id_list[i : i + chunk_size]
+                escaped_chunk = [cid.replace("'", "''") for cid in chunk]
+                formatted_ids = ", ".join(f"'{c}'" for c in escaped_chunk)
+                self.table.delete(f"id IN ({formatted_ids})")
+                deleted_count += len(chunk)
+            # Also purge any legacy records with blank/empty content
+            if "content" in self.table.schema.names:
+                self.table.delete("content = '' OR content IS NULL")
+        except Exception as e:
+            logger.warning(f"Error during LanceDB deletion: {e}")
+        return deleted_count
+
     def add_records(self, records: List[Dict[str, Any]]) -> int:
         """Inserts records into LanceDB, skipping existing IDs and ensuring field defaults."""
         if not records:
@@ -194,7 +215,7 @@ class LanceDBStore:
 
         active_where = " AND ".join(conditions) if conditions else None
 
-        # 1. Hybrid Search (Dense Vector + BM25 Full-Text)
+        # 1. Hybrid Search (Dense Vector + BM25 Full-Text with Semantic Weighting)
         if query_type.lower() == "hybrid" and query_vector is not None and query_text:
             try:
                 self.ensure_fts_index("content")
@@ -203,6 +224,12 @@ class LanceDBStore:
                     .vector(query_vector)
                     .text(query_text)
                 )
+                try:
+                    from lancedb.rerankers import LinearCombinationReranker
+                    builder = builder.rerank(LinearCombinationReranker(weight=0.8))
+                except Exception:
+                    pass
+
                 if active_where:
                     builder = builder.where(active_where)
                 return builder.limit(limit).to_list()

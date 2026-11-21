@@ -322,27 +322,52 @@ EOF
     # Skills & Rules
     if [ -f "$TARGET_DIR/integrations/antigravity/SKILL.md" ]; then
         cp "$TARGET_DIR/integrations/antigravity/SKILL.md" "$AGY_PLUGIN/skills/cephalo/SKILL.md"
-        cp "$TARGET_DIR/integrations/antigravity/SKILL.md" "$HOME/.gemini/config/skills/cephalo/SKILL.md"
+        # Clean up global copy if present to prevent duplicate skill discovery
+        rm -rf "$HOME/.gemini/config/skills/cephalo" 2>/dev/null || true
     fi
 
     if [ -f "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" ]; then
         sed "s|{{CEPHALO_DIR}}|$TARGET_DIR|g" "$TARGET_DIR/integrations/antigravity/cephalo_second_brain.md" > "$AGY_PLUGIN/rules/AGENTS.md"
-        cp "$AGY_PLUGIN/rules/AGENTS.md" "$AGY_PLUGIN/rules/GEMINI.md"
-        # Clean up legacy global rule if present to prevent duplicate prompt injection (~1,200 tokens/turn saved)
-        if [ -f "$HOME/.gemini/config/rules/cephalo_second_brain.md" ]; then
-            rm -f "$HOME/.gemini/config/rules/cephalo_second_brain.md"
-        fi
+        # Avoid duplicate rule loading inside plugin (AGENTS.md alone is discovered by Antigravity)
+        rm -f "$AGY_PLUGIN/rules/GEMINI.md" 2>/dev/null || true
+        # Clean up legacy global rules to eliminate duplicate prompt injection (~3,000 tokens/turn saved)
+        rm -f "$HOME/.gemini/config/rules/cephalo_second_brain.md" 2>/dev/null || true
+        # Clean up ~/.gemini/AGENTS.md and GEMINI.md if they only duplicate Cephalo rules
+        python3 -c "
+import os
+for fname in ('AGENTS.md', 'GEMINI.md'):
+    p = os.path.expanduser(f'~/.gemini/{fname}')
+    if os.path.exists(p):
+        with open(p, 'r', encoding='utf-8') as f:
+            txt = f.read()
+        if 'Cephalo' in txt and 'USER_PROFILE.md' in txt:
+            os.remove(p)
+" 2>/dev/null || true
     fi
 
-    # Non-destructive hooks merge
+    # Hooks configuration: Strictly register in plugin only; prune from global hooks to prevent 2x execution
     merge_hooks_json "$AGY_PLUGIN/hooks.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
-    merge_hooks_json "$HOME/.gemini/config/hooks.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/learning/auto_harvest.py"
+    if [ -f "$HOME/.gemini/config/hooks.json" ]; then
+        python3 -c "
+import json, os
+p = os.path.expanduser('~/.gemini/config/hooks.json')
+try:
+    with open(p, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    if 'cephalo-autonomous-brain' in data:
+        del data['cephalo-autonomous-brain']
+        with open(p, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+except Exception:
+    pass
+" 2>/dev/null || true
+    fi
 
-    # Native MCP Integration
+    # Native MCP Integration: Register globally so permissions match mcp(cephalo/...), prune plugin mcp to avoid cephalo_cephalo duplicate
     if [ "$ENABLE_MCP" -eq 1 ]; then
-        merge_mcp_config "$AGY_PLUGIN/mcp_config.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
         merge_mcp_config "$HOME/.gemini/config/mcp_config.json" "$PY_CMD" "$TARGET_DIR/src/cephalo/services/mcp_server.py" "$TARGET_DIR/src"
-        echo "      Configured Cephalo stdio MCP server in Antigravity."
+        rm -f "$AGY_PLUGIN/mcp_config.json" 2>/dev/null || true
+        echo "      Configured Cephalo stdio MCP server in Antigravity (deduplicated)."
     fi
 fi
 

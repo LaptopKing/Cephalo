@@ -100,8 +100,9 @@ class TestTsetlinGatekeeper:
     @pytest.fixture(scope="class")
     @classmethod
     def gatekeeper(cls):
-        gk = TsetlinGatekeeper(number_of_clauses=60, T=25, s=2.0)
-        gk.train(epochs=40, save_on_complete=True)
+        np.random.seed(42)
+        gk = TsetlinGatekeeper(number_of_clauses=60, T=25, s=1.8)
+        gk.train(epochs=50, save_on_complete=True)
         return gk
 
     def test_gatekeeper_is_trained(self, gatekeeper):

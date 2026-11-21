@@ -263,3 +263,16 @@ def cmd_harvest(args) -> None:
     from cephalo.learning.auto_harvest import run_standalone_harvest
     run_standalone_harvest(transcript_path=args.transcript)
 
+
+def cmd_clean(args) -> None:
+    """Purges empty records and deduplicates redundant memories."""
+    from cephalo.core.memory_cleaner import run_cleanup
+    res = run_cleanup()
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2))
+        return
+    print(f"[+] Cephalo Memory Cleanup Complete:")
+    print(f"    - Removed empty records:      {res['empty_removed']}")
+    print(f"    - Removed duplicate records:  {res['duplicates_removed']}")
+    print(f"    - Clean memories retained:    {res['total_retained']}")
+

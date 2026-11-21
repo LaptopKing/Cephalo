@@ -294,7 +294,7 @@ class TsetlinGatekeeper:
 
         if not self.is_trained:
             if not self.auto_load():
-                self.train(epochs=40, save_on_complete=True)
+                self.train(epochs=45, save_on_complete=True)
 
         token_set = self.vectorizer.get_tokens(text)
 

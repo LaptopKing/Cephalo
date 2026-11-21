@@ -51,8 +51,27 @@ STATE_FILE = DATA_DIR / "harvest_state.json"
 PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 LANCEDB_DIR = DATA_DIR / "lancedb"
 
-# Threshold for Qwen 1024d L2 distance (<= 1.22 indicates strong semantic relevance to personal knowledge)
-RELEVANCE_DISTANCE_THRESHOLD = 1.22
+# Threshold for Qwen 1024d L2 distance (<= 0.72 indicates high semantic relevance; prevents noise over-injection)
+RELEVANCE_DISTANCE_THRESHOLD = 0.72
+
+# Categories strictly allowed for PreInvocation context injection (stateful preferences, constraints, hardware)
+ALLOWED_INJECTION_CATEGORIES: Set[str] = {
+    "user_preference",
+    "preference",
+    "preferences",
+    "entertainment_preferences",
+    "entertainment_preference",
+    "hardware_spec",
+    "hardware_devices",
+    "hardware",
+    "critique_negative_filter",
+    "negative_constraint",
+    "workflow_rule",
+    "workflow_preference",
+    "design_preference",
+    "car_livery_preference",
+    "core-invariants",
+}
 
 # Multilingual Classifier is loaded on demand from cephalo.learning.multilingual_classifier
 
@@ -198,9 +217,9 @@ def harvest_all_user_prompts(messages: List[Dict[str, Any]], conversation_id: st
 
 def query_relevant_memory(query_text: str) -> Optional[Tuple[str, str, float]]:
     """
-    Performs ultra-fast local vector search directly in LanceDB.
-    Returns (id, content_snippet, distance) if relevant, or None if unrelated.
-    Token-efficiency guarantee: If distance > RELEVANCE_DISTANCE_THRESHOLD, returns None.
+    Performs high-precision semantic search in LanceDB with dense reranking.
+    Returns (id, content_snippet, score) if highly relevant, or None if unrelated.
+    Token-efficiency guarantee: If score < 0.50 or unrelated category, returns None (0 tokens wasted).
     """
     if not LANCEDB_DIR.exists():
         return None
@@ -229,38 +248,60 @@ def query_relevant_memory(query_text: str) -> Optional[Tuple[str, str, float]]:
         vec = list(embedder.embed([query_text]))[0]
 
         where_cond = "(is_deprecated IS NULL OR is_deprecated = false)" if "is_deprecated" in tbl.schema.names else None
-        search_builder = tbl.search(vec)
+
+        try:
+            from lancedb.rerankers import LinearCombinationReranker
+            search_builder = tbl.search(query_type="hybrid").vector(vec).text(query_text).rerank(LinearCombinationReranker(weight=0.8))
+        except Exception:
+            search_builder = tbl.search(vec)
+
         if where_cond:
             search_builder = search_builder.where(where_cond)
         results = search_builder.limit(5).to_list()
         if not results:
             return None
 
-        # Filter by threshold and strictly exclude quarantined or generic conversational records
+        # Filter by relevance and strictly restrict to allowed preference/hardware/constraint categories
         valid = []
         for r in results:
             if r.get("is_quarantined") is True:
                 continue
             cat = r.get("category", "")
-            if cat in ("user_prompt", "general", "ephemeral_turn"):
+            if cat not in ALLOWED_INJECTION_CATEGORIES:
                 continue
-            dist = r.get("_distance", 2.0)
-            if dist <= RELEVANCE_DISTANCE_THRESHOLD:
-                valid.append(r)
+            content = r.get("content", "")
+            if not isinstance(content, str) or not content.strip():
+                continue
+
+            if "_relevance_score" in r:
+                score = float(r["_relevance_score"])
+                if score >= 0.50:
+                    valid.append((r, score, True))
+            else:
+                dist = float(r.get("_distance", 2.0))
+                if dist <= 1.15:
+                    valid.append((r, dist, False))
 
         if not valid:
             return None
 
-        # When multiple active memories match closely (within 0.15 distance of top),
-        # prioritize newer timestamp to ensure the latest preference is returned
-        valid.sort(key=lambda x: x.get("_distance", 2.0))
-        best_dist = valid[0].get("_distance", 2.0)
-        close_competitors = [r for r in valid if r.get("_distance", 2.0) <= best_dist + 0.15]
+        # Sort valid matches: if hybrid (higher score is better), if distance (lower distance is better)
+        is_score = valid[0][2]
+        if is_score:
+            valid.sort(key=lambda x: x[1], reverse=True)
+            best_val = valid[0][1]
+            close_competitors = [x[0] for x in valid if x[1] >= best_val - 0.05]
+        else:
+            valid.sort(key=lambda x: x[1])
+            best_val = valid[0][1]
+            close_competitors = [x[0] for x in valid if x[1] <= best_val + 0.02]
+
         close_competitors.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         top = close_competitors[0]
 
         content = top.get("content", "")
-        return (top.get("id", ""), content, top.get("_distance", 2.0))
+        top_metric = float(top.get("_relevance_score", top.get("_distance", 0.0)))
+        return (top.get("id", ""), content, top_metric)
 
     except Exception:
         pass
@@ -434,6 +475,11 @@ def handle_stop_hook(input_data: Dict[str, Any]) -> None:
         from cephalo.services.job_queue import JobQueue
         queue = JobQueue()
         queue.enqueue("sync_lancedb", {"jsonl_path": str(PROMPTS_FILE)}, priority=8)
+
+        # Autonomous Hourly Memory Cleanup (removes empty & duplicate records)
+        from cephalo.core.memory_cleaner import MemoryCleaner
+        if MemoryCleaner.should_run_periodic_clean(interval_seconds=3600):
+            queue.enqueue("clean_memory", {}, priority=4)
     except Exception:
         pass
 

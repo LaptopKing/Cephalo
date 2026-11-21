@@ -291,28 +291,33 @@ class EmbeddingPipeline:
             else:
                 traits_list = []
 
-            inline_tags = extract_tags(item.get("content", ""))
-            item_tags = item.get("tags", [])
+            inline_tags = extract_tags(item.get("content", "") or "")
+            item_tags = item.get("tags") or []
             if isinstance(item_tags, str):
                 item_tags = [t.strip() for t in item_tags.split(",") if t.strip()]
+            elif not isinstance(item_tags, list):
+                item_tags = []
             combined_tags = list(dict.fromkeys(item_tags + inline_tags))
             clean_tags = [t.lstrip("#").strip().lower() for t in combined_tags if t.strip()]
+
+            relates_val = item.get("relates_to") or []
+            relates_list = list(relates_val) if isinstance(relates_val, (list, tuple, set)) else []
 
             records.append({
                 "id": item.get("id", f"prompt-{i+1:03d}"),
                 "vector": vectors[i],
                 "content": sanitized_texts[i],
-                "category": item.get("category", "general"),
-                "source": item.get("source", "jsonl_import"),
-                "timestamp": item.get("timestamp", datetime.datetime.now().astimezone().isoformat()),
+                "category": item.get("category", "general") or "general",
+                "source": item.get("source", "jsonl_import") or "jsonl_import",
+                "timestamp": item.get("timestamp") or datetime.datetime.now().astimezone().isoformat(),
                 "embedding_model": f"{self.embedder.mode}:{self.embedder.model_name}",
                 "dimension": self.embedder.dimension,
-                "extracted_intent": item.get("extracted_intent", ""),
+                "extracted_intent": item.get("extracted_intent", "") or "",
                 "learned_traits": traits_list,
                 "tags": clean_tags,
-                "supersedes": str(item.get("supersedes", "")),
-                "superseded_by": str(item.get("superseded_by", "")),
-                "relates_to": list(item.get("relates_to", [])),
+                "supersedes": str(item.get("supersedes") or ""),
+                "superseded_by": str(item.get("superseded_by") or ""),
+                "relates_to": relates_list,
                 "is_deprecated": bool(item.get("is_deprecated", False)),
                 "sanitized": True,
             })

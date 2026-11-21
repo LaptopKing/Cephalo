@@ -86,6 +86,7 @@ impl DaemonSupervisor {
         );
 
         let mut last_periodic = std::time::Instant::now();
+        let mut last_hourly_clean = std::time::Instant::now();
 
         while running.load(Ordering::SeqCst) {
             let metrics = governor.inspect_resources();
@@ -103,6 +104,13 @@ impl DaemonSupervisor {
                             "screen_capture" => {
                                 let screen = crate::screen::ScreenEngine::new(&self.data_dir, &self.root_dir);
                                 let _ = screen.capture_step(false, &queue);
+                                Ok(())
+                            }
+                            "clean_memory" => {
+                                let py_bin = self.root_dir.join(".venv/bin/python");
+                                let cmd_name = if py_bin.exists() { py_bin.to_string_lossy().to_string() } else { "python3".to_string() };
+                                let script = "from cephalo.core.memory_cleaner import run_cleanup; run_cleanup()";
+                                let _ = std::process::Command::new(cmd_name).args(["-c", script]).output();
                                 Ok(())
                             }
                             "continuous_learn" | "transcript_harvest" | "sync_lancedb" => {
@@ -158,6 +166,12 @@ impl DaemonSupervisor {
                     }
                     let _ = queue.enqueue("transcript_harvest", None, 3, true);
                     let _ = queue.enqueue("continuous_learn", None, 2, true);
+
+                    // Hourly memory cleaner: purge empty & duplicate memories every 3600 seconds
+                    if last_hourly_clean.elapsed().as_secs() >= 3600 {
+                        last_hourly_clean = std::time::Instant::now();
+                        let _ = queue.enqueue("clean_memory", None, 3, true);
+                    }
                 }
             }
 

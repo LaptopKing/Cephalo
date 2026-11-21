@@ -42,7 +42,11 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Clear, factual statement of the decision, preference, or constraint.",
+                        "description": "Clear, factual statement of the decision, preference, or constraint (alias: 'content').",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Alias for 'text'. Clear, factual statement of the decision, preference, or constraint.",
                     },
                     "category": {
                         "type": "string",

@@ -3,6 +3,17 @@
 REAL_BIN="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$REAL_BIN")/.." && pwd)"
 
+# Vector semantic search and cleanup execute via Python LanceDB engine
+if [ "$1" = "search" ] || [ "$1" = "clean" ]; then
+    PYTHON_CMD="python3"
+    if [ -f "$SCRIPT_DIR/.venv/bin/python" ]; then
+        PYTHON_CMD="$SCRIPT_DIR/.venv/bin/python"
+    elif ! command -v python3 &> /dev/null; then
+        PYTHON_CMD="python"
+    fi
+    exec "$PYTHON_CMD" "$SCRIPT_DIR/brain.py" "$@"
+fi
+
 # Ultra-low latency native Rust engine execution (sub-5ms)
 RUST_BIN="$SCRIPT_DIR/rust/target/release/cephalo"
 if [ -x "$RUST_BIN" ]; then

@@ -282,6 +282,7 @@ class QueueWorker:
             "continuous_learn": self._handle_continuous_learn,
             "transcript_harvest": self._handle_transcript_harvest,
             "ocr_screen_keyframe": self._handle_ocr_screen_keyframe,
+            "clean_memory": self._handle_clean_memory,
         }
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         self._active_futures: Dict[int, concurrent.futures.Future] = {}
@@ -537,3 +538,12 @@ class QueueWorker:
                 logger.info(f"Ingested screen OCR ({len(words)} words) into LanceDB for frame {frame_id}")
             except Exception as ing_err:
                 logger.warning(f"Could not ingest screen OCR to LanceDB: {ing_err}")
+
+    def _handle_clean_memory(self, payload: Dict[str, Any]) -> None:
+        """Purges empty records and deduplicates redundant memories."""
+        from cephalo.core.memory_cleaner import run_cleanup
+        res = run_cleanup()
+        logger.info(
+            f"Hourly memory cleanup finished: {res.get('empty_removed', 0)} empty removed, "
+            f"{res.get('duplicates_removed', 0)} duplicates removed, {res.get('total_retained', 0)} retained."
+        )

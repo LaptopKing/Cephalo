@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Cephalo - Adaptive Non-Destructive Installer (Windows PowerShell)
 # ==============================================================================
 # Invariant: Cephalo adapts and integrates cleanly into existing environments.
@@ -344,10 +344,12 @@ if (Test-Path $AgyBase) {
     $SkillSource = Join-Path $TargetDir "integrations\antigravity\SKILL.md"
     if (Test-Path $SkillSource) {
         Copy-Item $SkillSource (Join-Path $PluginSkillsDir "SKILL.md") -Force
+        # Clean up global copy if present to prevent duplicate skill discovery
         $GlobalSkillsDir = Join-Path $AgyBase "config\skills\cephalo"
-        New-Item -ItemType Directory -Path $GlobalSkillsDir -Force | Out-Null
-        Copy-Item $SkillSource (Join-Path $GlobalSkillsDir "SKILL.md") -Force
-        Write-Host "      Configured Antigravity Cephalo Skill in plugin & global skills." -ForegroundColor Green
+        if (Test-Path $GlobalSkillsDir) {
+            Remove-Item -Path $GlobalSkillsDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Write-Host "      Configured Antigravity Cephalo Skill in plugin (deduplicated)." -ForegroundColor Green
     }
 
     $TemplatePath = Join-Path $TargetDir "integrations\antigravity\cephalo_second_brain.md"
@@ -357,27 +359,51 @@ if (Test-Path $AgyBase) {
         $RuleContent = "# Cephalo Second Brain & Autonomous Memory Policy`n`nLocated at: $TargetDir`n`nAlways consult $TargetDir\USER_PROFILE.md and use 'cephalo search <query>' before answering."
     }
 
+    # Register only AGENTS.md in plugin rules (avoids duplicate loading)
     Set-Content -Path (Join-Path $PluginRulesDir "AGENTS.md") -Value $RuleContent -Encoding UTF8
-    Set-Content -Path (Join-Path $PluginRulesDir "GEMINI.md") -Value $RuleContent -Encoding UTF8
+    $DuplicateRule = Join-Path $PluginRulesDir "GEMINI.md"
+    if (Test-Path $DuplicateRule) {
+        Remove-Item -Path $DuplicateRule -Force -ErrorAction SilentlyContinue
+    }
 
-    # Clean up legacy standalone global rule to eliminate duplicate prompt injection (~1,200 tokens/turn saved)
+    # Clean up legacy standalone global rules to eliminate duplicate prompt injection (~3,000 tokens/turn saved)
     $LegacyRulePath = Join-Path $AgyBase "config\rules\cephalo_second_brain.md"
     if (Test-Path $LegacyRulePath) {
         Remove-Item -Path $LegacyRulePath -Force -ErrorAction SilentlyContinue
-        Write-Host "      Cleaned up legacy duplicate global rule to prevent token waste." -ForegroundColor Green
+    }
+    foreach ($globalMd in @("AGENTS.md", "GEMINI.md")) {
+        $gPath = Join-Path $AgyBase $globalMd
+        if (Test-Path $gPath) {
+            $gTxt = Get-Content -Path $gPath -Raw -Encoding UTF8
+            if ($gTxt -match "Cephalo" -and $gTxt -match "USER_PROFILE\.md") {
+                Remove-Item -Path $gPath -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
-    # Non-destructive hooks merge
+    # Non-destructive hooks merge: Strictly register inside plugin only; prune from global hooks to prevent 2x execution
     $AutoHarvestPath = Join-Path $TargetDir "src\cephalo\learning\auto_harvest.py"
     Merge-HooksJson -HooksPath (Join-Path $PluginDir "hooks.json") -PythonExe $PythonCmd -HarvestScript $AutoHarvestPath
-    Merge-HooksJson -HooksPath (Join-Path $AgyBase "config\hooks.json") -PythonExe $PythonCmd -HarvestScript $AutoHarvestPath
+    $GlobalHooks = Join-Path $AgyBase "config\hooks.json"
+    if (Test-Path $GlobalHooks) {
+        try {
+            $hJson = Get-Content -Path $GlobalHooks -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($hJson.PSObject.Properties['cephalo-autonomous-brain']) {
+                $hJson.PSObject.Properties.Remove('cephalo-autonomous-brain')
+                $hJson | ConvertTo-Json -Depth 10 | Set-Content -Path $GlobalHooks -Encoding UTF8
+            }
+        } catch {}
+    }
 
-    # Native MCP Integration as Installation Default
+    # Native MCP Integration: Register globally so permission grants match mcp(cephalo/...), prune plugin mcp
     $McpServerPath = Join-Path $TargetDir "src\cephalo\services\mcp_server.py"
     $SrcPath = Join-Path $TargetDir "src"
-    Merge-McpConfig -McpPath (Join-Path $PluginDir "mcp_config.json") -PythonExe $PythonCmd -McpServerScript $McpServerPath -SrcDir $SrcPath
     Merge-McpConfig -McpPath (Join-Path $AgyBase "config\mcp_config.json") -PythonExe $PythonCmd -McpServerScript $McpServerPath -SrcDir $SrcPath
-    Write-Host "      Configured Cephalo stdio MCP server as default in Antigravity." -ForegroundColor Green
+    $PluginMcp = Join-Path $PluginDir "mcp_config.json"
+    if (Test-Path $PluginMcp) {
+        Remove-Item -Path $PluginMcp -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "      Configured Cephalo stdio MCP server as default in Antigravity (deduplicated)." -ForegroundColor Green
 }
 
 # B. Claude Code Non-Destructive Integration

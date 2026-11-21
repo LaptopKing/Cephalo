@@ -29,7 +29,7 @@ for p in (str(ROOT_DIR), str(ROOT_DIR / "src")):
 
 from cephalo.commands.common import get_pipeline, parse_profile_sections, resolve_cli_input
 from cephalo.commands.profile_cmds import cmd_profile, cmd_status, get_system_status, cmd_reconcile
-from cephalo.commands.memory_cmds import cmd_search, cmd_def, cmd_record, cmd_sync, cmd_harvest
+from cephalo.commands.memory_cmds import cmd_search, cmd_def, cmd_record, cmd_sync, cmd_harvest, cmd_clean
 from cephalo.commands.specialty_cmds import cmd_specialty
 from cephalo.commands.research_cmds import (
     cmd_daemon,
@@ -112,6 +112,9 @@ def main():
     # Sync
     sync_p = subparsers.add_parser("sync", parents=[shared_parser], help="Synchronize prompts.jsonl with LanceDB.")
     sync_p.add_argument("--file", type=str, default=str(PROMPTS_FILE), help="Source JSONL file.")
+
+    # Clean
+    clean_p = subparsers.add_parser("clean", parents=[shared_parser], help="Purge empty entries and deduplicate redundant memories.")
 
     # Harvest
     harv_p = subparsers.add_parser("harvest", parents=[shared_parser], help="Autonomously harvest preferences from transcripts.")
@@ -495,6 +498,7 @@ def main():
         "def": cmd_def,
         "record": cmd_record,
         "sync": cmd_sync,
+        "clean": cmd_clean,
         "harvest": cmd_harvest,
         "specialty": cmd_specialty,
         "research": cmd_research,
