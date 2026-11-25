@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cephalo"
-version = "2.1.0"
+version = "2.1.1"
 description = "Sovereign Local Memory & Cognitive Coprocessor for AI Agents"
 readme = "README.md"
 requires-python = ">=3.10"

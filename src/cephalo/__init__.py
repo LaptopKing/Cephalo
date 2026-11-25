@@ -18,4 +18,4 @@ for p in (str(ROOT_DIR), str(SRC_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"

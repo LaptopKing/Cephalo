@@ -1,6 +1,6 @@
 [package]
 name = "cephalo"
-version = "0.2.0"
+version = "2.1.1"
 edition = "2021"
 authors = ["LaptopKing <csordaspeter2002@gmail.com>"]
 description = "Sovereign Cognitive Coprocessor & Autonomous Second Brain in Native Rust"
