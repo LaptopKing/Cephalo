@@ -28,7 +28,7 @@ if [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
 fi
 
 # Detect current version
-CURRENT_VERSION=$(python3 -c "import re; f=open('pyproject.toml').read(); print(re.search(r'version\s*=\s*[\"\\\']([^\"\\\']+)[\"\\\']', f).group(1))")
+CURRENT_VERSION=$(python3 -c 'import re; f=open("pyproject.toml").read(); print(re.search(r"version\s*=\s*[\"\x27]([^\"\x27]+)[\"\x27]", f).group(1))')
 echo "=========================================================="
 echo "  🚀 Cephalo Release Management Tool"
 echo "=========================================================="
@@ -95,14 +95,15 @@ if [[ ! "$confirm" =~ ^[yY] ]]; then
 fi
 
 # 1. Update version in pyproject.toml
-python3 -c "
-import re
-with open('pyproject.toml', 'r', encoding='utf-8') as f:
+python3 -c '
+import re, sys
+ver = sys.argv[1]
+with open("pyproject.toml", "r", encoding="utf-8") as f:
     text = f.read()
-text = re.sub(r'version\s*=\s*[\"\\\'][^\"\\\']+[\"\\\']', 'version = \"$NEW_VERSION\"', text)
-with open('pyproject.toml', 'w', encoding='utf-8') as f:
+text = re.sub(r"version\s*=\s*[\"\x27][^\"\x27]+[\"\x27]", f"version = \"{ver}\"", text)
+with open("pyproject.toml", "w", encoding="utf-8") as f:
     f.write(text)
-"
+' "$NEW_VERSION"
 
 # 2. Update version in rust/Cargo.toml
 if [ -f "rust/Cargo.toml" ]; then
@@ -118,14 +119,15 @@ fi
 
 # 3. Update version in src/cephalo/__init__.py
 if [ -f "src/cephalo/__init__.py" ]; then
-    python3 -c "
-import re
-with open('src/cephalo/__init__.py', 'r', encoding='utf-8') as f:
+    python3 -c '
+import re, sys
+ver = sys.argv[1]
+with open("src/cephalo/__init__.py", "r", encoding="utf-8") as f:
     text = f.read()
-text = re.sub(r'__version__\s*=\s*[\"\\\'][^\"\\\']+[\"\\\']', '__version__ = \"$NEW_VERSION\"', text)
-with open('src/cephalo/__init__.py', 'w', encoding='utf-8') as f:
+text = re.sub(r"__version__\s*=\s*[\"\x27][^\"\x27]+[\"\x27]", f"__version__ = \"{ver}\"", text)
+with open("src/cephalo/__init__.py", "w", encoding="utf-8") as f:
     f.write(text)
-"
+' "$NEW_VERSION"
 fi
 
 echo "[1/4] Running core verification tests..."
