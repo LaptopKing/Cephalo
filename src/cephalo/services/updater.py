@@ -99,7 +99,7 @@ def load_update_state() -> Dict[str, Any]:
         "last_update_version": None,
         "release_url": None,
         "release_notes": None,
-        "policy": "auto",  # 'auto', 'notify', 'off'
+        "policy": "notify",  # 'notify', 'off' (check-only; manual update via 'cephalo update')
         "notified_in_session": False,
     }
     if STATE_FILE.exists():
@@ -481,19 +481,16 @@ def get_harness_notification() -> Optional[Dict[str, str]]:
 def trigger_session_start_hook() -> Optional[str]:
     """
     Hook handler called from auto_harvest.py on SessionStart.
-    Checks for updates throttled, triggers background update if policy=auto,
-    and returns notification text if applicable.
+    Checks for updates throttled (check-only, never auto-applies),
+    and returns notification text if a newer release is available.
     """
     state = load_update_state()
-    policy = state.get("policy", "auto")
+    policy = state.get("policy", "notify")
+    if policy == "off":
+        return None
 
-    # Perform background throttled check
-    check_res = check_for_updates(force=False, interval_seconds=DEFAULT_CHECK_INTERVAL_SECONDS)
-
-    if check_res.get("update_available") and policy == "auto":
-        # Launch background update
-        if not is_update_locked():
-            apply_update_background(target_tag=check_res.get("latest_version"))
+    # Perform background throttled check only (never auto-apply updates)
+    check_for_updates(force=False, interval_seconds=DEFAULT_CHECK_INTERVAL_SECONDS)
 
     notice = get_harness_notification()
     if notice:

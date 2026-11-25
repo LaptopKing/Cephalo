@@ -196,3 +196,34 @@ class TestAutoUpdater:
         assert notice_avail is not None
         assert notice_avail["type"] == "available"
         assert "v2.3.0" in notice_avail["message"]
+
+    def test_session_start_hook_checks_only_never_auto_updates(self, tmp_path, monkeypatch):
+        from cephalo.services import updater
+
+        test_state_file = tmp_path / "update_state.json"
+        monkeypatch.setattr(updater, "STATE_FILE", test_state_file)
+        save_update_state({
+            "current_version": "2.1.0",
+            "latest_version": "2.9.9",
+            "update_available": True,
+            "policy": "auto",
+            "release_url": "https://github.com/LaptopKing/Cephalo/releases/tag/v2.9.9",
+        })
+
+        monkeypatch.setattr(
+            updater,
+            "check_for_updates",
+            lambda **kwargs: {"update_available": True, "latest_version": "2.9.9"},
+        )
+
+        called = []
+        monkeypatch.setattr(
+            updater,
+            "apply_update_background",
+            lambda *args, **kwargs: called.append(True),
+        )
+
+        msg = updater.trigger_session_start_hook()
+        assert called == []
+        assert msg is not None
+        assert "v2.9.9" in msg

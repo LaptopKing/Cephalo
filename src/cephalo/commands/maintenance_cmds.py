@@ -269,7 +269,7 @@ def cmd_update(args):
             print(f"[+] Cephalo background auto-update policy set to: {new_pol}")
         else:
             state = load_update_state()
-            print(f"Current update policy: {state.get('policy', 'auto')}")
+            print(f"Current update policy: {state.get('policy', 'notify')}")
 
     else:
         # Status / default
@@ -278,20 +278,20 @@ def cmd_update(args):
             print(json.dumps(state, indent=2, ensure_ascii=False))
         else:
             print("=" * 64)
-            print("  ⚡ CEPHALO AUTO-UPDATE & RELEASE STATUS")
+            print("  ⚡ CEPHALO UPDATE & RELEASE STATUS")
             print("=" * 64)
             print(f"  Current Version:      {state.get('current_version')}")
             print(f"  Latest Known Release: {state.get('latest_version')}")
             print(f"  Update Available:     {state.get('update_available')}")
-            print(f"  Update Policy:        {state.get('policy', 'auto')} (Options: auto, notify, off)")
+            print(f"  Update Policy:        {state.get('policy', 'notify')} (Options: notify, off)")
             print(f"  Last Checked:         {state.get('last_checked_at') or 'Never'}")
             print(f"  Last Update Applied:  {state.get('last_update_applied_at') or 'None'}")
             print(f"  Update Lock Active:   {is_update_locked()}")
             print("=" * 64)
             print("Commands:")
-            print("  cephalo update check        Check for newer release on GitHub")
-            print("  cephalo update apply        Apply update in background")
-            print("  cephalo update policy auto  Set background update policy")
+            print("  cephalo update check          Check for newer release on GitHub")
+            print("  cephalo update apply          Apply update in background")
+            print("  cephalo update policy notify  Set release check policy")
             print("=" * 64)
 
 

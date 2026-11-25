@@ -455,9 +455,9 @@ foreach ($cfg in $ClineConfigs) {
     }
 }
 
-# F. Autonomous Background Auto-Update Configuration
-Write-Host "      Configuring autonomous background update engine (zero flow disruption)..." -ForegroundColor Gray
-& $PythonCmd (Join-Path $TargetDir "brain.py") update policy auto 2>&1 | Out-Null
+# F. Background Release Check Configuration (check-only, never auto-updates)
+Write-Host "      Configuring release update checker (notify-only)..." -ForegroundColor Gray
+& $PythonCmd (Join-Path $TargetDir "brain.py") update policy notify 2>&1 | Out-Null
 
 # 7. Screen Memory & Visual Timeline Configuration
 Write-Host "[6/7] Configuring Desktop Screen Memory & Safeguards..." -ForegroundColor Yellow

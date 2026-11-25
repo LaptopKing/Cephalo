@@ -415,9 +415,9 @@ if [ "$ENABLE_MCP" -eq 1 ]; then
     done
 fi
 
-# F. Background Auto-Update Configuration
-echo "      Configuring autonomous background update engine (zero flow disruption)..."
-$PY_CMD "$TARGET_DIR/brain.py" update policy auto >/dev/null 2>&1 || true
+# F. Background Release Check Configuration (check-only, never auto-updates)
+echo "      Configuring release update checker (notify-only)..."
+$PY_CMD "$TARGET_DIR/brain.py" update policy notify >/dev/null 2>&1 || true
 
 # 7. Screen Memory & Visual Timeline Configuration
 echo "[6/7] Configuring Desktop Screen Memory & Safeguards..."
