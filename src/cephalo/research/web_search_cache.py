@@ -3,6 +3,7 @@ SQLite Cache Layer for Web Search SERP and Raw Pages.
 """
 
 import datetime
+import hashlib
 import json
 import logging
 import sqlite3
@@ -27,8 +28,8 @@ class WebSearchCache:
     def _init_cache_db(self) -> None:
         """Initializes SQLite cache database to preserve monthly API quota and accelerate retrieval."""
         try:
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
-            with sqlite3.connect(CACHE_DB_PATH) as conn:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(self.db_path) as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS serp_cache (
                         cache_key TEXT PRIMARY KEY,
@@ -57,7 +58,7 @@ class WebSearchCache:
         try:
             url_hash = hashlib.sha256(url.strip().encode("utf-8")).hexdigest()
             now = time.time()
-            with sqlite3.connect(CACHE_DB_PATH) as conn:
+            with sqlite3.connect(self.db_path) as conn:
                 cur = conn.cursor()
                 cur.execute(
                     "SELECT content FROM page_cache WHERE url_hash = ? AND expires_at > ?",
@@ -76,7 +77,7 @@ class WebSearchCache:
             url_hash = hashlib.sha256(url.strip().encode("utf-8")).hexdigest()
             now = time.time()
             expires = now + (ttl_hours * 3600)
-            with sqlite3.connect(CACHE_DB_PATH) as conn:
+            with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO page_cache (url_hash, url, content, engine, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
                     (url_hash, url.strip(), content, engine, now, expires),
@@ -90,7 +91,7 @@ class WebSearchCache:
         try:
             cache_key = hashlib.sha256(query.strip().lower().encode("utf-8")).hexdigest()
             now = time.time()
-            with sqlite3.connect(CACHE_DB_PATH) as conn:
+            with sqlite3.connect(self.db_path) as conn:
                 cur = conn.cursor()
                 cur.execute(
                     "SELECT serp_json FROM serp_cache WHERE cache_key = ? AND expires_at > ?",
@@ -122,7 +123,7 @@ class WebSearchCache:
             now = time.time()
             expires = now + (ttl_hours * 3600)
             data_str = json.dumps(serp.to_dict(), ensure_ascii=False)
-            with sqlite3.connect(CACHE_DB_PATH) as conn:
+            with sqlite3.connect(self.db_path) as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO serp_cache (cache_key, query, serp_json, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
                     (cache_key, serp.query, data_str, now, expires),

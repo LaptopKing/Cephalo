@@ -59,30 +59,21 @@ class CompactionCarryover:
                 cinema_aesthetic = None
                 for line in prof_content.splitlines():
                     l_lower = line.lower()
-                    if line.startswith("- ") and ("tv" in l_lower or "display" in l_lower) and any(d in l_lower for d in ["tcl", "oled", "qled", "lg", "sony"]):
+                    if line.startswith("- ") and ("tv" in l_lower or "display" in l_lower or "monitor" in l_lower):
                         hw_display = line.strip().lstrip("- ").strip()
                     elif line.startswith("- ") and "visual aesthetic" in l_lower:
                         cinema_aesthetic = line.strip().lstrip("- ").strip()
 
                 if hw_display:
                     lines.append(f"- Verified Hardware / Display: {hw_display}")
-                else:
-                    lines.append("- Verified Hardware / Display: TCL 65T8B (65\" 4K QLED Google TV).")
-
                 if cinema_aesthetic:
                     lines.append(f"- Cinema Aesthetics: {cinema_aesthetic}")
-                else:
-                    lines.append("- Cinema Aesthetics: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn.")
 
                 for line in prof_content.splitlines():
-                    if line.startswith("- ") and any(k in line.lower() for k in ["hungarian", "direct", "pragmatic", "no fluff"]):
+                    if line.startswith("- ") and any(k in line.lower() for k in ["direct", "pragmatic", "no fluff"]):
                         lines.append(line)
             except Exception:
-                lines.append("- Verified Hardware / Display: TCL 65T8B (65\" 4K QLED Google TV).")
-                lines.append("- Cinema Aesthetics: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn.")
-        else:
-            lines.append("- Verified Hardware / Display: TCL 65T8B (65\" 4K QLED Google TV).")
-            lines.append("- Cinema Aesthetics: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn.")
+                pass
 
         if active_specialty and self.specialties_dir.exists():
             spec_file = self.specialties_dir / f"{active_specialty}.md"

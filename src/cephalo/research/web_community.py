@@ -3,6 +3,7 @@ Community Discussion Targets and Deep-Web Forum Heuristics.
 """
 
 import re
+import urllib.parse
 from typing import List
 
 def is_deep_discussion_url(url: str) -> bool:

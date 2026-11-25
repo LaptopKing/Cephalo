@@ -143,7 +143,7 @@ if os.path.exists(path):
             if content:
                 data = json.loads(content)
     except Exception as e:
-        print(f"Warning: Failed to parse existing JSON in {path}: {e}. Preserved backup and skipped merge.", file=sys.stderr)
+        print(f'Warning: Failed to parse existing JSON in {path}: {e}. Preserved backup and skipped merge.', file=sys.stderr)
         sys.exit(0)
 
 data['cephalo-autonomous-brain'] = {
@@ -188,7 +188,7 @@ if os.path.exists(path):
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
     except Exception as e:
-        print(f"Warning: Failed to parse existing JSON in {path}: {e}. Preserved backup and skipped merge.", file=sys.stderr)
+        print(f'Warning: Failed to parse existing JSON in {path}: {e}. Preserved backup and skipped merge.', file=sys.stderr)
         sys.exit(0)
 
 if 'mcpServers' not in data:

@@ -177,8 +177,6 @@ class MultilingualClassifier:
         # 8. Hardware Specifications (Strict context: must express device ownership/spec, NOT code review)
         self.p_hardware = re.compile(
             r"(?i)\b("
-            # Explicit devices & configurations
-            r"tcl\s*65t8b|65-inch\s*4k|4k\s*qled|gtx\s*1050(\s*ti)?|acer\s*b243hl|windows\s*10\s*iot\s*ltsc|"
             # English ownership/setup phrases
             r"my tv (is|has)|my monitor (is|has)|my setup (is|has)|my gpu (is|has)|my graphics card|"
             r"my workstation|my screen resolution|my laptop is|my computer has|"
@@ -381,8 +379,8 @@ class MultilingualClassifier:
 if __name__ == "__main__":
     clf = MultilingualClassifier()
     test_cases = [
-        "A tévém egy TCL 65T8B, és a szaturált, élénk 4K-t preferálom, utálom a lassú szürke filmeket.",
-        "My TV is a TCL 65T8B and I prefer eye-popping vibrant 4K.",
+        "A tévém egy 4K OLED kijelző, és a szaturált, élénk színeket preferálom, utálom a lassú szürke filmeket.",
+        "My TV is a 4K OLED display and I prefer eye-popping vibrant 4K.",
         "Mostantól mindig magyarul és angolul válaszolj, sallangmentes stílusban.",
         "Nézd meg a commitot, és javítsd ki a hibát.",
         "Run pytest on tests/test_storage.py and see if it passes.",

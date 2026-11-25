@@ -153,7 +153,9 @@ def harvest_all_user_prompts(messages: List[Dict[str, Any]], conversation_id: st
             pass
 
     from cephalo.learning.multilingual_classifier import MultilingualClassifier
+    from cephalo.core.embedding_pipeline import Sanitizer
     classifier = MultilingualClassifier()
+    sanitizer = Sanitizer()
 
     for msg in messages:
         text = msg["content"]
@@ -165,8 +167,7 @@ def harvest_all_user_prompts(messages: List[Dict[str, Any]], conversation_id: st
         prompt_id = f"prompt-auto-{prompt_hash}"
 
         # Sanitize prompt content before writing to disk
-        from cephalo.core.embedding_pipeline import Sanitizer
-        clean_text = Sanitizer().sanitize(text)
+        clean_text = sanitizer.sanitize(text)
 
         entry = {
             "id": prompt_id,
@@ -319,7 +320,7 @@ def handle_session_start(input_data: Dict[str, Any]) -> None:
     """
     profile_summary = ""
     if PROFILE_FILE.exists():
-        profile_summary = " User profile active with cinema preferences (TCL 65T8B TV), hardware specs, and project specialties."
+        profile_summary = " User profile active with configured preferences, hardware specs, and project specialties."
 
     # Inspect live resource governor
     gov_info = ""

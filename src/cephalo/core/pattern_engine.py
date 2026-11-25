@@ -28,7 +28,7 @@ class DeveloperPatternEngine:
             "cephalo", "LanceDB", "FastEmbed", "ONNX", "Indra", "OXR",
             "OpenSandbox", "ThinkRail", "Orkas", "SituationMonitor",
             "car-livery-creator", "movie_discovery", "ascii-reveal",
-            "TCL 65T8B", "QLED", "Docker", "Python", "TypeScript",
+            "4K Display", "QLED", "Docker", "Python", "TypeScript",
             "Playwright", "Tree-sitter", "SQLite", "Subaru GF8",
         ]
 

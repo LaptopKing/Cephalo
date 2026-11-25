@@ -7,11 +7,14 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import sys
 import urllib.parse
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from cephalo.config import DEFAULT_LANCEDB_DIR
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 DOCS_WIKI_DIR = ROOT_DIR / "docs" / "wiki"
@@ -19,6 +22,16 @@ DATA_DIR = ROOT_DIR / "data"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
 
 logger = logging.getLogger("cephalo.research.wiki_server")
+
+def _ensure_dashboard_html() -> None:
+    """Ensures docs/wiki/index.html exists from the packaged template."""
+    DOCS_WIKI_DIR.mkdir(parents=True, exist_ok=True)
+    index_file = DOCS_WIKI_DIR / "index.html"
+    if not index_file.exists():
+        tpl = Path(__file__).resolve().parent / "templates" / "dashboard_index.html"
+        if tpl.exists():
+            index_file.write_text(tpl.read_text(encoding="utf-8"), encoding="utf-8")
+
 
 def get_timeline_records(limit: int = 500) -> List[Dict[str, Any]]:
     """Reads memories from prompts.jsonl and frame_index.jsonl in reverse-chronological order."""
@@ -153,10 +166,7 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
         path = parsed.path
 
         if path in ("/", "/index.html"):
-            index_file = DOCS_WIKI_DIR / "index.html"
-            if not index_file.exists():
-                wg = WikiGenerator()
-                wg._write_timeline_dashboard()
+            _ensure_dashboard_html()
             return super().do_GET()
 
         if path == "/api/timeline":
@@ -353,8 +363,7 @@ class DeepWikiServerHandler(SimpleHTTPRequestHandler):
 def run_deepwiki_server(port: int = 7433, open_browser: bool = True) -> None:
     """Runs the integrated Sovereign DeepWiki & Timeline dashboard server."""
     import webbrowser
-    wg = WikiGenerator()
-    wg._write_timeline_dashboard()
+    _ensure_dashboard_html()
     print(f"[+] Serving Cephalo DeepWiki & Memory Timeline at http://127.0.0.1:{port}/")
     if open_browser:
         webbrowser.open(f"http://127.0.0.1:{port}/")

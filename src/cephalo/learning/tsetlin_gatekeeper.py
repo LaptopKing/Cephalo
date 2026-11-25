@@ -161,11 +161,12 @@ class TsetlinGatekeeper:
 
         # Domain keywords to ensure presence in vocabulary
         extra_keywords = [
-            "tcl", "65t8b", "b243hl", "acer", "qled", "soundbar", "earc", "gtx1050ti",
+            "oled", "qled", "soundbar", "earc", "gpu", "vram", "4k", "hdr",
             "vibrant", "slowburn", "drab", "swagger", "kinetic", "refactor", "schema",
             "taskledger", "lancedb", "fastembed", "subagent", "governor", "weather",
             "hate", "avoid", "dislike", "boring", "blacklist", "broken", "slop",
-            "pacing", "colors", "taste", "spec", "monitor", "display", "gpu", "ram",
+            "rejected", "overcast", "dull", "palette", "muted",
+            "pacing", "colors", "taste", "spec", "monitor", "display", "ram",
         ]
         self.vectorizer.fit(texts, extra_keywords=extra_keywords)
         X = self.vectorizer.transform(texts)
@@ -267,8 +268,8 @@ class TsetlinGatekeeper:
             ("the fall guy rapid tempo vibrant cinematography", 1),
             ("fast pacing instant cold open momentum vibrant saturation", 1),
 
-            # REJECT (0) - Drab grey overcast, slow-burn 90s indie dramas, Snatch grey palette
-            ("snatch drab overcast grey palette dull tones", 0),
+            # REJECT (0) - Drab grey overcast, slow-burn 90s indie dramas
+            ("drab overcast grey palette dull tones", 0),
             ("slowburn indie drama 45 minutes to start boring", 0),
             ("drab grey washed out colors muted indie", 0),
             ("slow pacing slowburn depressing overcast lighting", 0),
@@ -403,7 +404,7 @@ class TsetlinGatekeeper:
     # -------------------------------------------------------------------------
 
     def evaluate_cinema(self, description: str) -> PreferenceEvaluation:
-        """Evaluates cinema recommendation against user TCL 65T8B 4K preference rules."""
+        """Evaluates cinema recommendation against learned user preference rules."""
         if not self.cinema_inducer.is_trained:
             if DEFAULT_CINEMA_MODEL.exists():
                 self.cinema_inducer.load(DEFAULT_CINEMA_MODEL)

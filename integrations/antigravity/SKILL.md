@@ -2,7 +2,7 @@
 name: cephalo
 description: >-
   Omnipresent Autonomous Second Brain and Personal Memory Engine.
-  Use whenever managing or retrieving user preferences, hardware configurations (e.g. TCL 65T8B TV),
+  Use whenever managing or retrieving user preferences, hardware configurations,
   entertainment and cinema criteria, project domain specialties, vector memory retrieval,
   or recording persistent user constraints and decisions.
 ---
@@ -22,9 +22,7 @@ Before making assumptions or answering questions concerning past decisions, pref
    - Check the profile blueprint: `/home/strider/Cephalo\USER_PROFILE.md`
    - Run hybrid vector search: `cephalo search "<query>" --json`
 2. Follow the user's communication style: direct, technical, pragmatic, clean markdown, no fluff.
-3. Keep the user's hardware constraints in mind:
-   - Living room display: **TCL 65T8B** (65-inch 4K QLED Google TV).
-   - Cinema aesthetic: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn (*Snatch* rejected for drab grey palette).
+3. Ground any hardware or aesthetic constraints dynamically from `USER_PROFILE.md` or `cephalo search`.
 
 ---
 

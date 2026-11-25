@@ -452,7 +452,7 @@ def main():
     gk_train_p.add_argument("--seed-only", action="store_true", help="Train strictly on curated seed data.")
 
     # gatekeeper cinema <description>
-    gk_cin_p = gk_sub.add_parser("cinema", parents=[shared_parser], help="Evaluate cinema recommendation against user TCL 65T8B 4K preference rules.")
+    gk_cin_p = gk_sub.add_parser("cinema", parents=[shared_parser], help="Evaluate cinema recommendation against learned user preference rules.")
     gk_cin_p.add_argument("text", type=str, help="Movie or entertainment description to evaluate.")
 
     # Update (Auto-Updater & Release Tracking)

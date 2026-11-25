@@ -4,6 +4,8 @@ import datetime
 import json
 import logging
 import os
+import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -394,7 +396,8 @@ def maybe_auto_learn() -> None:
                 should_run = True
 
         if should_run:
-            learner.run_cycle()
+            from cephalo.services.job_queue import JobQueue
+            JobQueue().enqueue("continuous_learn", {}, priority=1, deduplicate_pending=True)
     except Exception:
         pass
 

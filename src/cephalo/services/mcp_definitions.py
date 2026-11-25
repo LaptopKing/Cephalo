@@ -73,7 +73,7 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
         },
         {
             "name": "cephalo_get_profile",
-            "description": "Retrieves the user's permanent profile blueprint (core principles, hardware profiles like TCL 65T8B TV, communication style, language preferences, active projects). Always consult this to ground reasoning.",
+            "description": "Retrieves the user's permanent profile blueprint (core principles, hardware profiles, communication style, language preferences, active projects). Always consult this to ground reasoning.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},

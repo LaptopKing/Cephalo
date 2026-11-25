@@ -117,7 +117,7 @@ class TestContextualSupersessionE2E(unittest.TestCase):
 
     def test_hardware_specification_auto_supersession(self):
         mem1 = self.pipeline.ingest_prompt(
-            raw_text="User display devices: Living room TV is TCL 65T8B (65-inch 4K QLED Google TV).",
+            raw_text="User display devices: Living room TV is Sample 4K TV (65-inch 4K QLED Google TV).",
             prompt_id="prompt-hw-001",
             category="hardware_devices",
             sync_to_jsonl=False,

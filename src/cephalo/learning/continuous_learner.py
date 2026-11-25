@@ -42,7 +42,11 @@ STATE_FILE = DATA_DIR / "continuous_learning_state.json"
 PROMPTS_FILE = DATA_DIR / "prompts.jsonl"
 PROFILE_FILE = ROOT_DIR / "USER_PROFILE.md"
 SPECIALTIES_DIR = ROOT_DIR / "specialties"
-DEFAULT_PROJECTS_DIR = ROOT_DIR.parent / "projects"
+DEFAULT_PROJECTS_DIR = (
+    ROOT_DIR.parent if ROOT_DIR.parent.name == "projects"
+    else (ROOT_DIR.parent / "projects" if (ROOT_DIR.parent / "projects").exists()
+    else ROOT_DIR.parent)
+)
 
 # Logging setup
 logging.basicConfig(
@@ -304,8 +308,6 @@ class ContinuousLearner:
         # Analyze recurring directives
         directive_patterns = [
             (r"\b(anti-slop|anti slop|no slop|clean code|matt pocock)\b", "coding_philosophy", "Strict anti-slop software engineering: Matt Pocock real-engineer rules, idiomatic simplicity, zero dead code."),
-            (r"\b(tcl\s*65t8b|65-inch|4k\s*qled)\b", "hardware_profile", "Living room 4K display: TCL 65T8B (65\" QLED). High-saturation 4K visual target."),
-            (r"\b(hungarian|magyar)\b", "language_locale", "Primary native language Hungarian (Magyar) alongside English for all user-facing tools."),
             (r"\b(continuous learning|continous learning|cephalo learn)\b", "second_brain_system", "Autonomous continuous learning enabled across all workspaces and sessions."),
             (r"\b(research|investigat|specialt(y|ies)|best practices|industry standard|popular github)\b", "research_specialty_standard", "Autonomous deep research & specialty creation standard: first-principles fundamentals, industry standards, anti-AI-slop craftsmanship (Matt Pocock, Linux kernel), top GitHub repos, and bound user preferences."),
         ]

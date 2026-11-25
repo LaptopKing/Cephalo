@@ -17,10 +17,7 @@ Before answering questions concerning past decisions, preferences, device config
    - If a specific profile section is required, use sectional extraction: `cephalo profile --section <name>` (~300 tokens).
    - Full `USER_PROFILE.md` reads are strictly reserved for when the user explicitly requests profile auditing or editing.
 2. Follow communication baseline: Direct, technical, pragmatic, clean markdown, zero fluff. English always.
-3. Keep verified hardware profiles in mind:
-   - Living room display: **TCL 65T8B** (65-inch 4K QLED Google TV).
-   - Cinema aesthetic: Eye-popping, vibrant, high-saturation 4K; instant velocity from minute 1; anti-grey/anti-slowburn (*Snatch* rejected for drab grey palette).
-   - Workstation: Windows 10 IoT LTSC, GTX 1050 Ti, Acer B243HL monitor.
+3. Ground hardware and preference reasoning dynamically via `cephalo search` or `cephalo profile --section <name>` (never fabricate hardware specs if not configured).
 
 ---
 

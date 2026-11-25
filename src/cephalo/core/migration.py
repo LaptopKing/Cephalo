@@ -5,6 +5,7 @@ Single-command, zero-loss, encrypted/compressed migration package manager.
 
 from __future__ import annotations
 
+import concurrent.futures
 import datetime
 import io
 import json
@@ -17,6 +18,8 @@ import sys
 import tarfile
 import tempfile
 import time
+import zipfile
+import zlib
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 

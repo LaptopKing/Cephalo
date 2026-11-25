@@ -337,7 +337,7 @@ class EmbeddingPipeline:
         """Sanitizes query, generates query vector, and executes hybrid, vector, or FTS search."""
         # Sanitize query before embedding (Zero-Leak)
         clean_query = self.sanitizer.sanitize(raw_query.strip())
-        query_vector = self.embedder.embed_query(clean_query)
+        query_vector = None if query_type.lower() == "fts" else self.embedder.embed_query(clean_query)
         results = self.store.search(
             query_vector=query_vector,
             query_text=clean_query,

@@ -33,7 +33,7 @@ class TestPreferenceReconciler(unittest.TestCase):
         self.assertGreaterEqual(conf, 0.85)
 
     def test_living_room_hardware_supersession(self):
-        old_text = "User display devices: Living room TV is TCL 65T8B (65-inch 4K QLED Google TV)."
+        old_text = "User display devices: Living room TV is Sample 4K TV (65-inch 4K QLED Google TV)."
         new_text = "My living room TV is an LG OLED C3 65-inch, replaced the older unit."
 
         is_sup, reason, conf = self.reconciler.detect_supersession(
@@ -46,8 +46,8 @@ class TestPreferenceReconciler(unittest.TestCase):
         self.assertGreaterEqual(conf, 0.85)
 
     def test_hungarian_tv_replacement_supersession(self):
-        old_text = "User display devices: Living room TV is TCL 65T8B (65-inch 4K QLED Google TV)."
-        new_text = "Mostantól a nappaliban egy LG OLED C3 tévét használunk, a korábbi TCL-t lecseréltük."
+        old_text = "User display devices: Living room TV is Sample 4K TV (65-inch 4K QLED Google TV)."
+        new_text = "Mostantól a nappaliban egy LG OLED C3 tévét használunk, a korábbi Sample-TV-t lecseréltük."
 
         is_sup, reason, conf = self.reconciler.detect_supersession(
             new_text=new_text,
@@ -98,8 +98,8 @@ class TestPreferenceReconciler(unittest.TestCase):
         self.assertGreaterEqual(conf, 0.90)
 
     def test_french_tv_replacement_supersession(self):
-        old_text = "User display devices: Living room TV is TCL 65T8B (65-inch 4K QLED Google TV)."
-        new_text = "À partir de maintenant notre téléviseur dans le salon est un LG OLED C3, nous avons remplacé le TCL."
+        old_text = "User display devices: Living room TV is Sample 4K TV (65-inch 4K QLED Google TV)."
+        new_text = "À partir de maintenant notre téléviseur dans le salon est un LG OLED C3, nous avons remplacé le Sample-TV."
 
         is_sup, reason, conf = self.reconciler.detect_supersession(
             new_text=new_text,
@@ -139,22 +139,22 @@ class TestPreferenceReconciler(unittest.TestCase):
         section_text = (
             "## 2. User Identity & Verified Hardware\n"
             "- **User:** Peter\n"
-            "- **Living Room Display:** TCL 65T8B (65\" 4K QLED Google TV)\n"
-            "- **Workstation Monitor:** Acer B243HL"
+            "- **Living Room Display:** Sample 4K TV (65\" 4K QLED Google TV)\n"
+            "- **Workstation Monitor:** Sample Monitor M1"
         )
         new_bullet = "- **Living Room Display:** LG OLED C3 (65\" 4K OLED TV)"
 
         updated, replaced, old_bullet = self.reconciler.reconcile_markdown_section(section_text, new_bullet)
         self.assertTrue(replaced)
         self.assertIn("LG OLED C3", updated)
-        self.assertNotIn("TCL 65T8B", updated)
-        self.assertEqual(old_bullet, "- **Living Room Display:** TCL 65T8B (65\" 4K QLED Google TV)")
+        self.assertNotIn("Sample 4K TV", updated)
+        self.assertEqual(old_bullet, "- **Living Room Display:** Sample 4K TV (65\" 4K QLED Google TV)")
 
     def test_markdown_section_reconciliation_appends_novel_key(self):
         section_text = (
             "## 2. User Identity & Verified Hardware\n"
             "- **User:** Peter\n"
-            "- **Workstation Monitor:** Acer B243HL"
+            "- **Workstation Monitor:** Sample Monitor M1"
         )
         new_bullet = "- **Tablet Device:** iPad Pro 11-inch M2"
 
@@ -162,7 +162,7 @@ class TestPreferenceReconciler(unittest.TestCase):
         self.assertFalse(replaced)
         self.assertIsNone(old_bullet)
         self.assertIn("iPad Pro", updated)
-        self.assertIn("Acer B243HL", updated)
+        self.assertIn("Sample Monitor M1", updated)
 
     def test_sync_deprecation_to_jsonl(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

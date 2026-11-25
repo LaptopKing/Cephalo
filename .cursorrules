@@ -1,13 +1,11 @@
 # Cephalo Memory & Engineering Invariants for Cursor
 
-You are operating with the user's sovereign Second Brain, Cephalo, located at:
-C:\Users\strider-desktop\.gemini\antigravity\scratch\second-brain
+You are operating with the user's sovereign Second Brain, Cephalo.
 
 ## 1. Grounding in User Profile & Token Efficiency
 - Token-Efficiency Invariant: NEVER call read_file on `USER_PROFILE.md` (~11,000 tokens) for routine queries. Ground reasoning using `cephalo search "<query>" --json` (~120 tokens) or `cephalo profile --section <name>` (~300 tokens). Full profile reads are strictly for explicit profile editing/auditing.
-- Living Room Display: TCL 65T8B (65-inch 4K QLED Google TV).
 - Tone: Direct, technical, pragmatic, clean markdown, no fluff.
-- Language: Hungarian (native primary) & English.
+- Language: English (or user's configured language in `USER_PROFILE.md`).
 
 ## 2. Autonomous Learning & Deep Research Invariant
 - Whenever the user expresses a critique ("too slow", "boring", "drab", "didn't like"), capture it immediately as a negative blacklist constraint.

@@ -15,7 +15,7 @@ def classifier():
 
 def test_multilingual_hungarian_preference_and_critique(classifier):
     # Hungarian critique + preference + hardware
-    text = "A tévém egy TCL 65T8B, és a szaturált, élénk 4K-t preferálom, utálom a lassú szürke filmeket."
+    text = "A tévém egy Sample 4K TV, és a szaturált, élénk 4K-t preferálom, utálom a lassú szürke filmeket."
     res = classifier.classify(text)
     assert res.is_durable is True
     assert res.is_quarantined is False

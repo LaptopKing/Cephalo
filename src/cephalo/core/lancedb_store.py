@@ -24,6 +24,7 @@ class LanceDBStore:
 
         self.db = lancedb.connect(str(self.db_path))
         self.table = self._get_or_create_table()
+        self._fts_ready = False
 
     def _get_schema(self) -> pa.Schema:
         """Defines the PyArrow schema with fixed vector dimensions, tags, and relations."""
@@ -121,7 +122,10 @@ class LanceDBStore:
         if self.table.count_rows() == 0:
             return set()
         try:
-            arrow_table = self.table.to_arrow()
+            try:
+                arrow_table = self.table.to_arrow(columns=["id"])
+            except TypeError:
+                arrow_table = self.table.to_arrow()
             return set(arrow_table["id"].to_pylist())
         except Exception as e:
             logger.debug(f"Could not read existing IDs: {e}")
@@ -176,16 +180,27 @@ class LanceDBStore:
             sanitized_records.append(rec)
 
         self.table.add(sanitized_records)
-        self.ensure_fts_index("content")
+        self.ensure_fts_index("content", force=True)
         return len(sanitized_records)
 
-    def ensure_fts_index(self, field: str = "content"):
+    def ensure_fts_index(self, field: str = "content", force: bool = False):
         """Ensures a full-text search (FTS) index exists on the given field for hybrid search."""
         if self.table.count_rows() == 0:
             return
+        if self._fts_ready and not force:
+            return
         try:
+            if not force:
+                try:
+                    indices = self.table.list_indices()
+                    if any(getattr(idx, "columns", None) == [field] or field in str(idx) for idx in indices):
+                        self._fts_ready = True
+                        return
+                except Exception:
+                    pass
             from lancedb.index import FTS
             self.table.create_index(field, config=FTS(), replace=True)
+            self._fts_ready = True
         except Exception as e:
             logger.debug(f"Could not build/update FTS index on '{field}': {e}")
 

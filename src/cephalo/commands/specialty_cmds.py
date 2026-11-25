@@ -200,9 +200,6 @@ def cmd_specialty(args) -> None:
         handler(mgr, args)
     else:
         print(f"Unknown specialty action: {action}")
-        print(f"Repositories ({len(synth.get('github_repos', []))}):")
-        for r in synth.get("github_repos", []):
-            print(f"  * {r['name']} (Stars: {r['stars']}): {r['description'][:80]}...")
-        print("=" * 70)
+        sys.exit(1)
 
 

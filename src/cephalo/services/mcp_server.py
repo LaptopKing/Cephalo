@@ -80,7 +80,10 @@ def handle_tool_call(name: str, arguments: Dict[str, Any]) -> Any:
             limit = arguments.get("limit", 5)
             qtype = arguments.get("type", "hybrid")
             category = arguments.get("category")
-            where = f"category = '{category}'" if category else None
+            where = None
+            if category:
+                safe_cat = str(category).strip().replace("'", "''")
+                where = f"category = '{safe_cat}'"
 
             results = pipeline.search(
                 raw_query=query,

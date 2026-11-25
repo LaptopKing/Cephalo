@@ -15,7 +15,7 @@ def test_memory_cleaner_purges_empty_and_duplicates(tmp_path):
         # Duplicate records (TCL color temperature note)
         {
             "id": "prompt-dup-1",
-            "content": "Remote note: TCL 65T8B requires Warm color temperature on SDR #hardware/display",
+            "content": "Remote note: Sample 4K TV requires Warm color temperature on SDR #hardware/display",
             "category": "hardware",
             "is_deprecated": True,
             "timestamp": "2026-10-29T21:46:55Z",
@@ -23,7 +23,7 @@ def test_memory_cleaner_purges_empty_and_duplicates(tmp_path):
         },
         {
             "id": "prompt-dup-2",
-            "content": "Remote note: TCL 65T8B requires Warm color temperature on SDR #hardware/display",
+            "content": "Remote note: Sample 4K TV requires Warm color temperature on SDR #hardware/display",
             "category": "hardware",
             "is_deprecated": False,
             "timestamp": "2026-11-02T12:00:00Z",

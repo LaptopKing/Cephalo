@@ -6,7 +6,7 @@ Deterministic, explainable propositional rule gatekeeper using Tsetlin Machines 
 Core Capabilities:
 1. High-Speed Intent Routing: Classifies incoming prompts into 5 deterministic categories:
    - preference: User taste, aesthetic preferences, workflow declarations.
-   - hardware_spec: Devices, monitors, TVs (TCL 65T8B), GPU (GTX 1050 Ti), audio, physical environment.
+   - hardware_spec: Devices, monitors, TVs, GPUs, audio, physical environment.
    - critique_filter: Negative reaction, complaints, items to avoid or blacklist.
    - architectural_milestone: Technical design decisions, schemas, refactoring rules.
    - ephemeral_query: General questions, standard search, casual banter.
@@ -14,7 +14,7 @@ Core Capabilities:
    Machine to induce exact Boolean rules (e.g. accepting vibrant 4K / instant velocity vs
    rejecting drab grey / slowburn cinema).
 3. Human-Readable Propositional Explanation: Generates transparent Boolean clause strings
-   such as `(has("tcl") AND has("tv")) -> hardware_spec`.
+   such as `(has("oled") AND has("tv")) -> hardware_spec`.
 4. Sub-Millisecond Model Persistence: Saves and loads trained propositional clause weights
    enabling ultra-fast inference (< 0.1ms) without re-training.
 """
@@ -57,7 +57,7 @@ INTENT_CATEGORIES = [
 
 CATEGORY_DESCRIPTIONS = {
     "preference": "User taste, visual aesthetics, tool preferences, or workflow style declarations.",
-    "hardware_spec": "Physical devices, monitors, TVs (TCL 65T8B), GPUs, RAM, display resolution, audio.",
+    "hardware_spec": "Physical devices, monitors, TVs, GPUs, RAM, display resolution, audio.",
     "critique_filter": "Negative critique, complaints, rejected styles, or items to blacklist/avoid.",
     "architectural_milestone": "Technical design decisions, schema migrations, refactoring rules, clean architecture.",
     "ephemeral_query": "General questions, transient searches, casual conversation, disposable commands.",
@@ -312,34 +312,34 @@ SEED_INTENT_DATASET: List[Tuple[str, str]] = [
     ("Always prioritize local privacy and offline embeddings for our second brain", "preference"),
 
     # hardware_spec (Devices, monitors, TVs, GPUs, RAM, physical setup)
-    ("Living room TV is TCL 65T8B 65-inch 4K QLED Google TV display", "hardware_spec"),
-    ("Workstation monitor is Acer LCD Monitor Acer B243HL screen", "hardware_spec"),
-    ("GPU is NVIDIA GeForce GTX 1050 Ti with 4GB VRAM and CUDA 13.0", "hardware_spec"),
-    ("PC specs are Windows 10 IoT Enterprise LTSC with 16 GB RAM", "hardware_spec"),
+    ("Living room TV is a 65-inch 4K OLED Google TV display", "hardware_spec"),
+    ("Workstation monitor is a 27-inch 1440p IPS LCD screen", "hardware_spec"),
+    ("GPU is a dedicated graphics card with 8GB VRAM and CUDA", "hardware_spec"),
+    ("PC specs are Linux workstation with 32 GB RAM and NVMe SSD", "hardware_spec"),
     ("Audio setup has HDMI eARC Dolby Atmos soundbar and satellite speakers", "hardware_spec"),
     ("Display resolution is 3840x2160 4K UHD 60Hz HDR panel", "hardware_spec"),
     ("The laptop has 16GB memory and x86_64 CPU running Linux hardware", "hardware_spec"),
-    ("Connected a secondary Acer 24 inch 1080p display monitor via DVI", "hardware_spec"),
-    ("TCL TV HDMI 2.1 port connected to console device", "hardware_spec"),
-    ("Hardware profile: TCL 65T8B television and Acer screen workstation", "hardware_spec"),
+    ("Connected a secondary 24 inch 1080p display monitor via DisplayPort", "hardware_spec"),
+    ("TV HDMI 2.1 port connected to console device", "hardware_spec"),
+    ("Hardware profile: 4K television and dual monitor workstation", "hardware_spec"),
     ("Hardware constraint: power brownout when battery is discharging under 20 percent", "hardware_spec"),
-    ("Display target: TCL 65T8B 65 inch 4K QLED panel with high dynamic range", "hardware_spec"),
-    ("System memory has 11 GB free RAM with NVIDIA GeForce GPU", "hardware_spec"),
+    ("Display target: 65 inch 4K QLED panel with high dynamic range", "hardware_spec"),
+    ("System memory has 16 GB free RAM with dedicated GPU", "hardware_spec"),
     ("Audio setup configured for eARC passthrough and subwoofer", "hardware_spec"),
-    ("My workstation has an Acer LCD monitor model B243HL", "hardware_spec"),
-    ("Living room TV setup: TCL 65T8B 4K QLED panel with HDMI 2.1", "hardware_spec"),
-    ("We have a TCL 65T8B connected via HDMI to soundbar", "hardware_spec"),
-    ("Acer monitor B243HL screen display", "hardware_spec"),
-    ("The machine has an NVIDIA GeForce GTX 1050 Ti GPU with 4GB VRAM", "hardware_spec"),
+    ("My workstation has an external 24 inch LCD monitor", "hardware_spec"),
+    ("Living room TV setup: 4K OLED panel with HDMI 2.1", "hardware_spec"),
+    ("We have a 4K TV connected via HDMI to soundbar", "hardware_spec"),
+    ("External monitor screen display connected via HDMI", "hardware_spec"),
+    ("The machine has a dedicated GPU with 8GB VRAM", "hardware_spec"),
     ("Dolby Atmos soundbar audio setup connected via HDMI eARC", "hardware_spec"),
 
     # critique_filter (Negative reaction, complaints, items to avoid or blacklist)
     ("Found it boring and way too slow, avoid this completely", "critique_filter"),
-    ("Snatch rejected for drab overcast grey palette and dull 90s tones", "critique_filter"),
+    ("Film rejected for drab overcast grey palette and dull tones", "critique_filter"),
     ("I hate slow-burn movies that take 45 minutes to get started at home", "critique_filter"),
     ("Stop recommending slow indie dramas with muted drab colors", "critique_filter"),
     ("Do not use fake dummy mock sponsored ads or placeholder auctions", "critique_filter"),
-    ("Never use 555 Sonic Blue rally livery cliché on the car", "critique_filter"),
+    ("Never use generic cliché livery patterns on the car", "critique_filter"),
     ("This library is terrible and broken, blacklist and avoid it", "critique_filter"),
     ("This advice does not work, avoid this approach completely", "critique_filter"),
     ("Too verbose and full of AI slop, do not generate repetitive fluff", "critique_filter"),
@@ -349,7 +349,7 @@ SEED_INTENT_DATASET: List[Tuple[str, str]] = [
     ("I dislike drab washed out visuals and overcast dreary lighting", "critique_filter"),
     ("Never suggest dummy placeholder data when real data is unavailable", "critique_filter"),
     ("I hated the movie, it was so drab and slowburn, avoid it", "critique_filter"),
-    ("Snatch rejected because of ugly drab overcast grey palette", "critique_filter"),
+    ("Movie rejected because of ugly drab overcast grey palette", "critique_filter"),
     ("Do not recommend this, it is terribly slow and boring", "critique_filter"),
     ("Hate slowburn films with muted colors, blacklist them", "critique_filter"),
     ("Stop suggesting this library, it is broken and unusable", "critique_filter"),

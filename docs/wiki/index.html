@@ -31,7 +31,7 @@
           <span id="capture-status" class="toast toast-success">Memory Saved</span>
         </div>
         <div class="capture-box">
-          <textarea id="capture-text" class="capture-textarea" placeholder="Capture a thought, architectural decision, or constraint (e.g. #hardware/display TCL 65T8B calibrated to Vivid HDR)..."></textarea>
+          <textarea id="capture-text" class="capture-textarea" placeholder="Capture a thought, architectural decision, or constraint (e.g. #architecture/db prefer SQLite WAL mode for local state)..."></textarea>
           <div class="capture-actions">
             <div class="capture-inputs">
               <select id="capture-category" class="capture-select">
@@ -343,7 +343,7 @@
         const safeSource = escapeHtml(memo.source || 'cli');
         const tagsHtml = (memo.tags || []).map(t => {
           const st = escapeHtml(t);
-          return `<span class="tag-pill" onclick="setTagFilter('${st}')">#${st}</span>`;
+          return `<span class="tag-pill" data-tag="${st}" onclick="setTagFilter(this.dataset.tag)">#${st}</span>`;
         }).join(' ');
         const supersedesHtml = memo.supersedes ? `<div class="memo-relations">↳ Supersedes: <strong>${escapeHtml(memo.supersedes)}</strong></div>` : '';
         const deprecatedBadge = isDep ? '<span class="badge badge-deprecated">DEPRECATED</span>' : '';
@@ -368,7 +368,7 @@
             ${tagsHtml ? `<div class="memo-tags">${tagsHtml}</div>` : ''}
             ${supersedesHtml}
             <div class="memo-footer">
-              <button class="btn-copy" onclick="copyCardText(this, '${safeId}')">Copy</button>
+              <button class="btn-copy" data-id="${safeId}" onclick="copyCardText(this, this.dataset.id)">Copy</button>
             </div>
           </div>
         `;
@@ -442,7 +442,7 @@
         el.classList.add('active');
       }
       const pane = document.getElementById('docs-content');
-      pane.innerHTML = 'Loading ' + filename + '...';
+      pane.textContent = 'Loading ' + filename + '...';
       try {
         const res = await fetch('/api/doc?file=' + encodeURIComponent(filename));
         const markdown = await res.text();
@@ -450,6 +450,16 @@
       } catch (err) {
         pane.innerHTML = '<div style="color: #f87171;">Failed to load doc.</div>';
       }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     function renderMarkdown(md) {
@@ -474,69 +484,3 @@
   </script>
 </body>
 </html>
-"""
-        target.write_text(html, encoding="utf-8")
-        return target
-
-
-# ==============================================================================
-# Sovereign Timeline & DeepWiki HTTP Server
-# ==============================================================================
-def get_timeline_records(limit: int = 500) -> List[Dict[str, Any]]:
-    """Reads memories from prompts.jsonl and frame_index.jsonl in reverse-chronological order."""
-    from cephalo.core.embedding_pipeline import extract_tags
-
-    records = []
-    if PROMPTS_FILE.exists():
-        with open(PROMPTS_FILE, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
-                    if "tags" not in rec or not rec["tags"]:
-                        rec["tags"] = extract_tags(rec.get("content", ""))
-                    rec.setdefault("is_deprecated", False)
-                    rec.setdefault("supersedes", "")
-                    rec.setdefault("relates_to", [])
-                    records.append(rec)
-                except Exception:
-                    pass
-
-    # Blend recent screen events if present
-    frames_file = DATA_DIR / "frames" / "frame_index.jsonl"
-    if frames_file.exists():
-        with open(frames_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    frec = json.loads(line)
-                    ts = frec.get("timestamp", "")
-                    title = frec.get("window_title", "Screen Snapshot")
-                    proc = frec.get("process_name", "")
-                    content = f"📸 Screen Activity: {title}" + (f" ({proc})" if proc else "")
-                    if frec.get("ocr_text"):
-                        content += f"\n\nOCR Text: {frec['ocr_text'][:200]}"
-                    records.append({
-                        "id": frec.get("id"),
-                        "timestamp": ts,
-                        "category": "screen_capture",
-                        "content": content,
-                        "tags": ["#screen", f"#{proc.replace('.exe','').lower()}"] if proc else ["#screen"],
-                        "image_path": frec.get("path"),
-                        "is_deprecated": False,
-                        "supersedes": "",
-                        "relates_to": [],
-                    })
-                except Exception:
-                    pass
-
-    records.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
-    return records[:limit]
-
-
-def get_heatmap_data() -> Dict[str, Any]:
-    """Computes daily ingestion counts over the past 365 days.

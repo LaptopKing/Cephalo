@@ -25,5 +25,5 @@ claude mcp list
 Once configured, Claude Code will automatically possess native tools to interact with your second brain:
 - Automatically recalls past decisions and constraints before answering queries.
 - Records new preferences, critiques, and architectural decisions automatically.
-- Adheres to the user's verified hardware (TCL 65T8B TV) and communication style (Hungarian + English, pragmatic, no fluff).
+- Adheres to the user's configured hardware and communication style from `USER_PROFILE.md` (direct, pragmatic, no fluff).
 - Has access to curated engineering specialties (`coding-craftsmanship`, `nextjs`, `drizzle-orm`, `bullmq`, `html-email-design`).

@@ -2,6 +2,7 @@
 Migration Restorer: archive extraction, harness config merging, and rollback verification.
 """
 
+import concurrent.futures
 import datetime
 import json
 import logging
@@ -10,6 +11,8 @@ import shutil
 import tarfile
 import tempfile
 import time
+import zipfile
+import zlib
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 

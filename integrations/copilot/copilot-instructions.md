@@ -11,6 +11,6 @@ This codebase is part of the user's sovereign Second Brain, Cephalo:
 - In Python, support Python 3.12+ with strict type hints.
 
 ## 3. User Style & Hardware Grounding
-- Living room screen: TCL 65T8B (65-inch 4K QLED Google TV).
+- Ground hardware and style preferences dynamically from `USER_PROFILE.md` or `cephalo search`.
 - Tone: Technical, objective, direct, clean markdown.
-- Language: Hungarian & English.
+- Language: English (or user's configured language).

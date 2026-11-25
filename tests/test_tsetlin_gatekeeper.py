@@ -7,7 +7,7 @@ Verifies:
 3. High-speed intent routing (<1ms) across preference, hardware, critique, architecture, and query.
 4. Human-readable propositional rule explanations and triggered Boolean clauses.
 5. Model persistence (save/load) for zero-training instant inference.
-6. Preference Rule Induction (Capability 2 & 3) for cinema recommendations (TCL 65T8B 4K).
+6. Preference Rule Induction (Capability 2 & 3) for cinema recommendations.
 7. Cephalo CLI gatekeeper & tsetlin subcommands.
 """
 
@@ -49,18 +49,18 @@ class TestBooleanVectorizer:
         assert "movie" in tokens
 
     def test_domain_alphanumerics_preserved(self):
-        text = "Living room TV TCL 65T8B 4K QLED Acer B243HL GTX 1050 Ti"
+        text = "Living room TV 65X90L 4K OLED Dell U2723QE GPU 8GB"
         tokens = BooleanVectorizer.tokenize(text)
-        assert "tcl" in tokens
-        assert "65t8b" in tokens
+        assert "65x90l" in tokens
         assert "4k" in tokens
-        assert "qled" in tokens
-        assert "acer" in tokens
-        assert "b243hl" in tokens
+        assert "oled" in tokens
+        assert "dell" in tokens
+        assert "u2723qe" in tokens
+        assert "gpu" in tokens
 
     def test_fit_transform_matrix(self):
         texts = [
-            "TCL 65T8B 4K QLED television display",
+            "4K OLED television display panel",
             "Slowburn indie movie drab grey palette",
             "Refactor SQLite database schema ledger",
         ]
@@ -68,7 +68,7 @@ class TestBooleanVectorizer:
         vec.fit(texts)
 
         assert len(vec.vocab) > 5
-        assert "tcl" in vec.vocab
+        assert "oled" in vec.vocab
         assert "slowburn" in vec.vocab
         assert "refactor" in vec.vocab
 
@@ -78,9 +78,9 @@ class TestBooleanVectorizer:
         assert matrix.dtype == np.uint32
 
         # Check binary presence
-        tcl_idx = vec.word_to_id["tcl"]
-        assert matrix[0, tcl_idx] == 1
-        assert matrix[1, tcl_idx] == 0
+        oled_idx = vec.word_to_id["oled"]
+        assert matrix[0, oled_idx] == 1
+        assert matrix[1, oled_idx] == 0
 
     def test_vectorizer_serialization(self):
         vec = BooleanVectorizer(min_freq=1, max_features=50)
@@ -111,7 +111,7 @@ class TestTsetlinGatekeeper:
         assert gatekeeper.training_stats.get("accuracy", 0) >= 0.80
 
     def test_routing_hardware_spec(self, gatekeeper):
-        text = "Living room TV is TCL 65T8B 65-inch 4K QLED display"
+        text = "Living room TV is a 65-inch 4K OLED display panel"
         res = gatekeeper.route(text)
         assert res.category == "hardware_spec"
         assert res.confidence >= 0.50
@@ -121,7 +121,7 @@ class TestTsetlinGatekeeper:
         assert res.execution_time_ms < 1.0  # Must be sub-millisecond
 
     def test_routing_critique_filter(self, gatekeeper):
-        text = "Snatch rejected for drab overcast grey palette and dull tones"
+        text = "I hate drab overcast grey palette, avoid slowburn films"
         res = gatekeeper.route(text)
         assert res.category == "critique_filter"
         assert res.confidence >= 0.50
@@ -157,7 +157,7 @@ class TestTsetlinGatekeeper:
 
     def test_sub_millisecond_inference_benchmark(self, gatekeeper):
         prompts = [
-            "TCL 65T8B TV display",
+            "4K OLED TV display",
             "I hate slowburn drab cinema, avoid it",
             "I prefer dark obsidian themes with python",
             "Refactor schema migration in LanceDB",
@@ -183,9 +183,9 @@ class TestTsetlinGatekeeper:
                 assert f"-> {cat}" in r
 
     def test_explain_diagnostics(self, gatekeeper):
-        diag = gatekeeper.explain("TCL 65T8B display connected via HDMI")
+        diag = gatekeeper.explain("4K OLED display connected via HDMI")
         assert diag["predicted_category"] == "hardware_spec"
-        assert "tcl" in diag["matched_tokens"] or "display" in diag["matched_tokens"]
+        assert "oled" in diag["matched_tokens"] or "display" in diag["matched_tokens"]
         assert diag["category_votes"]["hardware_spec"] > 0
         assert diag["triggered_clause"] is not None
 
@@ -212,7 +212,7 @@ class TestModelPersistence:
             assert gk2.vectorizer.vocab == gk1.vectorizer.vocab
 
             # Test predictions match exactly
-            test_prompt = "Living room TV is TCL 65T8B"
+            test_prompt = "Living room TV is 4K OLED display"
             res1 = gk1.route(test_prompt)
             res2 = gk2.route(test_prompt)
 
@@ -242,8 +242,8 @@ class TestPreferenceRuleInduction:
             ("the fall guy rapid tempo vibrant cinematography", 1),
             ("fast pacing instant cold open momentum vibrant saturation", 1),
 
-            # REJECT (0) - Drab grey overcast, slow-burn 90s indie dramas, Snatch grey palette
-            ("snatch drab overcast grey palette dull tones", 0),
+            # REJECT (0) - Drab grey overcast, slow-burn 90s indie dramas
+            ("drab overcast grey palette dull tones", 0),
             ("slowburn indie drama 45 minutes to start boring", 0),
             ("drab grey washed out colors muted indie", 0),
             ("slow pacing slowburn depressing overcast lighting", 0),
@@ -279,7 +279,7 @@ class TestPreferenceRuleInduction:
         assert res_accept.verdict == "ACCEPT"
         assert res_accept.triggered_rule is not None
 
-        res_reject = gk.evaluate_cinema("Snatch drab grey overcast indie film with slow pacing")
+        res_reject = gk.evaluate_cinema("drab grey overcast indie film with slow pacing")
         assert res_reject.verdict == "REJECT"
         assert res_reject.triggered_rule is not None
 
@@ -310,13 +310,13 @@ class TestCephaloCLIGatekeeper:
         assert "cinema" in proc.stdout
 
     def test_cli_gatekeeper_route_text(self):
-        proc = self._run_cli(["gatekeeper", "route", "Living room TV is TCL 65T8B 65-inch 4K QLED"])
+        proc = self._run_cli(["gatekeeper", "route", "Living room TV is 65-inch 4K OLED panel"])
         assert proc.returncode == 0
         assert "hardware_spec" in proc.stdout
         assert "Triggered Rule:" in proc.stdout
 
     def test_cli_gatekeeper_route_json(self):
-        proc = self._run_cli(["gatekeeper", "route", "Snatch rejected for drab overcast grey palette", "--json"])
+        proc = self._run_cli(["gatekeeper", "route", "I hate drab overcast grey palette, avoid slowburn films", "--json"])
         assert proc.returncode == 0
         data = json.loads(proc.stdout)
         assert data["category"] == "critique_filter"

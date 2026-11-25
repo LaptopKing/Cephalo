@@ -32,12 +32,12 @@
 ---
 
 ## 3. Local Environment & Language Baseline
-- **Primary Languages:** [e.g., English, Hungarian / Magyar, German, Japanese]
+- **Primary Languages:** [e.g., English, German, Spanish, Japanese]
   - Multilingual semantic search and localized PII sanitization enabled.
-- **Operating System:** [e.g., Windows 10/11, macOS Sequoia, Ubuntu 22.04 LTS]
+- **Operating System:** [e.g., Windows 10/11, macOS Sequoia, Ubuntu 24.04 LTS]
 - **Hardware Profile:**
   - **RAM:** [e.g., 8 GB / 16 GB / 32 GB]
-  - **GPU / Accelerator:** [e.g., Integrated Intel Iris / NVIDIA GTX 1050 Ti (4GB VRAM) / Apple M-series / CPU-only]
+  - **GPU / Accelerator:** [e.g., Integrated Graphics / Discrete GPU / Apple M-series / CPU-only]
   - **Python Runtime:** Python 3.10+ (Recommended: Python 3.12)
 - **Embedding Strategy:** 100% Local-only via FastEmbed (e.g., `Qwen/Qwen3-Embedding-0.6B-Q` [1024d] or `BAAI/bge-small-en-v1.5` [384d]) and LanceDB. Zero cloud embedding calls required.
 - **Agent Orchestrator:** Frontier AI agents (Antigravity, Claude Code, Codex, Cursor) running as the reasoning harness, querying the local LanceDB memory store via CLI.

@@ -450,7 +450,7 @@ def cmd_gatekeeper(args):
             print(json.dumps(res.to_dict(), indent=2, ensure_ascii=False))
         else:
             print("=" * 68)
-            print("  🎬 CINEMA PREFERENCE INDUCTION (TCL 65T8B 4K DISPLAY)")
+            print("  🎬 CINEMA PREFERENCE INDUCTION (LEARNED USER PROFILE)")
             print("=" * 68)
             print(f"  Item:             \"{res.item}\"")
             print(f"  Verdict:          {res.verdict}")

@@ -2,8 +2,11 @@
 Cephalo Vector Embedder Models (FastEmbed, Google Gemini API, ONNX).
 """
 
+import ctypes
+import json
 import logging
 import os
+import sys
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional

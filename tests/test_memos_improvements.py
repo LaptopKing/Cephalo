@@ -55,8 +55,8 @@ class TestTagTaxonomy(unittest.TestCase):
 
         # Mixed alphanumeric tags with hyphens and underscores
         self.assertEqual(
-            extract_tags("Testing on #tcl-65t8b with #vivid_mode"),
-            ["tcl-65t8b", "vivid_mode"],
+            extract_tags("Testing on #sample-4k-tv with #vivid_mode"),
+            ["sample-4k-tv", "vivid_mode"],
         )
 
     def test_ingest_with_tags(self):
@@ -150,7 +150,7 @@ class TestWebhookQuickCapture(unittest.TestCase):
 
         # Ingest memory directly via native Rust Webhook
         payload = json.dumps({
-            "text": "Remote note: TCL 65T8B requires Warm color temperature on SDR #hardware/display",
+            "text": "Remote note: Sample 4K TV requires Warm color temperature on SDR #hardware/display",
             "category": "hardware",
         }).encode("utf-8")
         headers = {"Content-Type": "application/json"}
@@ -170,7 +170,7 @@ class TestWebhookQuickCapture(unittest.TestCase):
             self.assertEqual(res["status"], "success")
             self.assertIn("id", res)
             self.assertEqual(res.get("category"), "hardware")
-            self.assertIn("TCL 65T8B", res.get("sanitized", ""))
+            self.assertIn("Sample 4K TV", res.get("sanitized", ""))
 
 
 class TestDashboardAndHeatmap(unittest.TestCase):

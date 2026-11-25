@@ -25,7 +25,7 @@ Core Methodological Invariants:
    - Mobile-first ergonomics (44x44px touch targets, fixed bottom thumb zone, single-row swipeable carousels).
    - Simplicity is key, ALWAYS (clean stone/paper canvas, modern pastel semantic accents, zero raw HTML).
 6. Bound User Preferences & Target Hardware:
-   - Injects user profile constraints (TCL 65T8B TV for multimedia/video, English code/docs, silent background execution).
+   - Injects user profile constraints (display profile for multimedia/video, English code/docs, silent background execution).
 7. Strict Pre-Recommendation Validation Invariant:
    - Never synthesize or recommend theoretical options without active empirical verification (pricing, delivery logistics, community track record; zero unvalidated assumptions).
 """
@@ -128,7 +128,7 @@ class DeepResearchEngine:
         "modal", "view", "dashboard", "widget", "carousel"
     }
 
-    # Multimedia / Cinema keywords to trigger TCL 65T8B & Video profile
+    # Multimedia / Cinema keywords to trigger Display & Video profile
     MEDIA_KEYWORDS = {
         "video", "cinema", "movie", "stream", "reels", "audio", "display", "tv", "remotion", "ffmpeg", "player"
     }
@@ -306,15 +306,15 @@ class DeepResearchEngine:
     def _get_configured_display_profile(self) -> str:
         """Dynamically retrieves hardware display constraints from USER_PROFILE.md."""
         try:
-            profile_path = ROOT_DIR / "USER_PROFILE.md"
-            if profile_path.exists():
-                text = profile_path.read_text(encoding="utf-8")
+            from cephalo.config import PROFILE_FILE
+            if PROFILE_FILE.exists():
+                text = PROFILE_FILE.read_text(encoding="utf-8")
                 m = re.search(r'(?i)(?:display|tv|monitor)[\s:*#]+([^\n\r]+)', text)
                 if m:
                     return m.group(1).strip()
         except Exception:
             pass
-        return "TCL 65T8B (65-inch 4K QLED Google TV)"
+        return "Configured primary display"
 
     def decompose_subtopics(self, topic: str, user_subtopics: Optional[List[str]] = None) -> List[str]:
         """Decomposes a broad topic into granular architectural subtopics."""
@@ -494,7 +494,7 @@ class DeepResearchEngine:
         if is_ui_topic:
             user_prefs.extend(["wcag_2_1_aa", "tokenized_design_system", "mobile_thumb_zone", "simplicity_first"])
         if is_media_topic:
-            user_prefs.extend(["tcl_65t8b_qled_4k", "instant_velocity_pacing", "high_saturation"])
+            user_prefs.extend(["high_dynamic_range_4k", "instant_velocity_pacing", "high_saturation"])
 
         tags = [slug, project, "deep-research", "industry-standards"]
         if is_ui_topic:

@@ -20,7 +20,15 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from cephalo.config import DATA_DIR
+
 logger = logging.getLogger("cephalo.research.web_fetcher")
+DEFAULT_PROFILE_DIR = DATA_DIR / "browser_profile"
+try:
+    import scrapling  # noqa: F401
+    HAS_SCRAPLING = True
+except ImportError:
+    HAS_SCRAPLING = False
 
 def validate_safe_url(url: str, allow_internal: bool = False) -> None:
     """
