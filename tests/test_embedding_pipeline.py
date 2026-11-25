@@ -17,9 +17,9 @@ if str(_SRC) not in sys.path:
 from cephalo.core.embedding_pipeline import (
     Sanitizer,
     FastEmbedEmbedder,
-    GoogleEmbedder,
     LanceDBStore,
     EmbeddingPipeline,
+    create_embedder,
 )
 
 
@@ -112,25 +112,10 @@ class TestFastEmbed(unittest.TestCase):
         self.assertEqual(len(vectors[1]), 384)
 
 
-class TestGoogleEmbedder(unittest.TestCase):
-    def test_missing_api_key_raises(self):
-        # Clear env variables temporarily
-        orig_gemini = os.environ.pop("GEMINI_API_KEY", None)
-        orig_google = os.environ.pop("GOOGLE_API_KEY", None)
-        try:
-            with self.assertRaises(ValueError):
-                GoogleEmbedder(api_key=None)
-        finally:
-            if orig_gemini:
-                os.environ["GEMINI_API_KEY"] = orig_gemini
-            if orig_google:
-                os.environ["GOOGLE_API_KEY"] = orig_google
-
-    def test_matryoshka_dimension_config(self):
-        embedder = GoogleEmbedder(api_key="dummy_key", dimension=256)
-        self.assertEqual(embedder.dimension, 256)
-        self.assertEqual(embedder.model_name, "text-embedding-004")
-        self.assertEqual(embedder.mode, "google")
+class TestLocalOnlyEmbedderFactory(unittest.TestCase):
+    def test_cloud_mode_rejected(self):
+        with self.assertRaises(ValueError):
+            create_embedder(mode="google")
 
 
 class TestLanceDBStore(unittest.TestCase):

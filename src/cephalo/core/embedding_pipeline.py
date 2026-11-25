@@ -75,7 +75,6 @@ from cephalo.core.sanitizer import (
 from cephalo.core.embedders import (
     BaseEmbedder,
     FastEmbedEmbedder,
-    GoogleEmbedder,
     create_embedder,
     get_safe_onnx_providers,
 )
@@ -363,9 +362,9 @@ def main():
     # Global options
     parser.add_argument(
         "--mode",
-        choices=["local", "google"],
+        choices=["local"],
         default="local",
-        help="Embedding mode: 'local' (FastEmbed, zero-leak) or 'google' (Google Cloud text-embedding-004).",
+        help="Embedding mode: 'local' (FastEmbed, 100%% local zero-leak).",
     )
     parser.add_argument(
         "--model",
@@ -377,19 +376,19 @@ def main():
         "--dim",
         type=int,
         default=None,
-        help="Embedding dimensionality (useful for Matryoshka dimension truncation on Google Cloud: e.g. 768, 256, 128).",
+        help="Embedding dimensionality override.",
     )
     parser.add_argument(
         "--table",
         type=str,
         default=None,
-        help="LanceDB table name (defaults to 'prompts_local' or 'prompts_google').",
+        help="LanceDB table name (defaults to 'prompts_local_<dim>').",
     )
     parser.add_argument(
         "--api-key",
         type=str,
         default=None,
-        help="Google API Key (can also be set via GEMINI_API_KEY or GOOGLE_API_KEY environment variable).",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--db-path",
@@ -545,7 +544,6 @@ __all__ = [
     "is_code_line",
     "BaseEmbedder",
     "FastEmbedEmbedder",
-    "GoogleEmbedder",
     "create_embedder",
     "get_safe_onnx_providers",
     "LanceDBStore",

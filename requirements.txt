@@ -39,9 +39,7 @@ tree-sitter-javascript>=0.25.0
 tree-sitter-go>=0.25.0
 tree-sitter-rust>=0.23.0
 
-# --- Optional Cloud Connectors & Utilities ---
-google-genai==2.31.0
-google-auth==2.62.0
+# --- Utilities ---
 requests==2.34.2
 pydantic==2.14.1
 python-dotenv==1.2.4

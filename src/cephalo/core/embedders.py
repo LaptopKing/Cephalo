@@ -163,134 +163,14 @@ class FastEmbedEmbedder(BaseEmbedder):
         return self.embed_texts([query])[0]
 
 
-class GoogleEmbedder(BaseEmbedder):
-    """Mode B: Google Cloud Embeddings via 'text-embedding-004'.
-    
-    Supports native Matryoshka dimension truncation (e.g. 768 down to 256 or 128).
-    Implements Google GenAI SDK with automatic HTTP REST fallback.
-    """
-
-    def __init__(
-        self,
-        api_key: Optional[str] = None,
-        model_name: str = "text-embedding-004",
-        dimension: int = 768,
-    ):
-        self._mode = "google"
-        self._model_name = model_name
-        self._dimension = dimension
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-
-        if not self.api_key:
-            raise ValueError(
-                "Google Cloud embedding mode requires an API key.\n"
-                "Provide it via: --api-key <KEY>, or set environment variable "
-                "GEMINI_API_KEY or GOOGLE_API_KEY in .env, or use '--mode local'."
-            )
-
-        self._genai_client = None
-        try:
-            from google import genai
-            self._genai_client = genai.Client(api_key=self.api_key)
-        except Exception as e:
-            logger.debug(f"google-genai client initialization skipped: {e}. Will use REST API.")
-
-    @property
-    def mode(self) -> str:
-        return self._mode
-
-    @property
-    def model_name(self) -> str:
-        return self._model_name
-
-    @property
-    def dimension(self) -> int:
-        return self._dimension
-
-    def _embed_via_sdk(self, texts: List[str]) -> List[List[float]]:
-        """Calls Google GenAI SDK."""
-        from google.genai import types
-
-        config = types.EmbedContentConfig(output_dimensionality=self._dimension)
-        # Google SDK supports list of strings for batch embedding
-        response = self._genai_client.models.embed_content(
-            model=self._model_name,
-            contents=texts,
-            config=config,
-        )
-        return [emb.values for emb in response.embeddings]
-
-    def _embed_via_rest(self, texts: List[str]) -> List[List[float]]:
-        """Fallback REST API call."""
-        import requests
-
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self._model_name}:batchEmbedContents?key={self.api_key}"
-        )
-        payload = {
-            "requests": [
-                {
-                    "model": f"models/{self._model_name}",
-                    "content": {"parts": [{"text": t}]},
-                    "outputDimensionality": self._dimension,
-                }
-                for t in texts
-            ]
-        }
-        headers = {"Content-Type": "application/json"}
-        resp = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30)
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"Google Embedding REST API returned HTTP {resp.status_code}: {resp.text}"
-            )
-
-        data = resp.json()
-        embeddings = data.get("embeddings", [])
-        return [item["values"] for item in embeddings]
-
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        if not texts:
-            return []
-
-        # Batch in chunks of 50 to respect API request constraints
-        chunk_size = 50
-        all_embeddings: List[List[float]] = []
-
-        for i in range(0, len(texts), chunk_size):
-            chunk = texts[i : i + chunk_size]
-            if self._genai_client:
-                try:
-                    all_embeddings.extend(self._embed_via_sdk(chunk))
-                    continue
-                except Exception as sdk_err:
-                    logger.warning(f"SDK embedding call failed ({sdk_err}), trying REST fallback...")
-
-            # REST fallback
-            all_embeddings.extend(self._embed_via_rest(chunk))
-
-        return all_embeddings
-
-
-# ==============================================================================
-# 3. Storage Layer (LanceDB Columnar Vector Store)
-# ==============================================================================
-
 def create_embedder(
     mode: str = "local",
     model: Optional[str] = None,
     dimension: Optional[int] = None,
     api_key: Optional[str] = None,
 ) -> BaseEmbedder:
-    """Factory creating either FastEmbed (Local) or Google Cloud embedder."""
+    """Factory creating the 100% local FastEmbed embedder."""
     if mode.lower() == "local":
         model_name = model or "Qwen/Qwen3-Embedding-0.6B-Q"
         return FastEmbedEmbedder(model_name=model_name)
-    elif mode.lower() in ("google", "cloud"):
-        model_name = model or "text-embedding-004"
-        dim = dimension or 768
-        return GoogleEmbedder(api_key=api_key, model_name=model_name, dimension=dim)
-    else:
-        raise ValueError(f"Unknown embedding mode: '{mode}'. Choose 'local' or 'google'.")
-
-
+    raise ValueError(f"Unsupported embedding mode: '{mode}'. Cephalo is 100% local-only ('local').")
